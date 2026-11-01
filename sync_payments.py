@@ -59,3 +59,23 @@ for m in mandates:
 if mandates_to_insert:
     supabase.table("Mandates").upsert(mandates_to_insert).execute()
     print(f"Successfully synced {len(mandates_to_insert)} mandates.")
+
+# 7. Fetch Customers
+customers = gc_client.customers.all()
+customers_to_insert = []
+
+for c in customers:
+    customers_to_insert.append({
+        "id": c.id,
+        "created_at": c.created_at,
+        "email": c.email,
+        "given_name": c.given_name,
+        "family_name": c.family_name,
+        "company_name": c.company_name,
+        "phone_number": c.phone_number
+    })
+
+# 8. Push Customers to Supabase
+if customers_to_insert:
+    supabase.table("Customers").upsert(customers_to_insert).execute()
+    print(f"Successfully synced {len(customers_to_insert)} customers.")
