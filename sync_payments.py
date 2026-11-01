@@ -38,7 +38,7 @@ for p in payments:
 # 4. Push to Supabase
 if records_to_insert:
     # Upsert updates the row if the ID already exists, or inserts it if it's new
-    supabase.table("Payments").upsert(records_to_insert).execute()
+    supabase.table("payments").upsert(records_to_insert).execute()
     print(f"Successfully synced {len(records_to_insert)} payments.")
 
 # 5. Fetch Mandates
@@ -57,7 +57,7 @@ for m in mandates:
 
 # 6. Push Mandates to Supabase
 if mandates_to_insert:
-    supabase.table("Mandates").upsert(mandates_to_insert).execute()
+    supabase.table("mandates").upsert(mandates_to_insert).execute()
     print(f"Successfully synced {len(mandates_to_insert)} mandates.")
 
 # 7. Fetch Customers
@@ -77,5 +77,5 @@ for c in customers:
 
 # 8. Push Customers to Supabase
 if customers_to_insert:
-    supabase.table("Customers").upsert(customers_to_insert).execute()
+    supabase.table("customers").upsert(customers_to_insert).execute()
     print(f"Successfully synced {len(customers_to_insert)} customers.")
