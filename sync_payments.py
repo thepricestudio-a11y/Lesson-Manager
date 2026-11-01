@@ -40,3 +40,22 @@ if records_to_insert:
     # Upsert updates the row if the ID already exists, or inserts it if it's new
     supabase.table("Payments").upsert(records_to_insert).execute()
     print(f"Successfully synced {len(records_to_insert)} payments.")
+
+# 5. Fetch Mandates
+mandates = gc_client.mandates.all()
+mandates_to_insert = []
+
+for m in mandates:
+    mandates_to_insert.append({
+        "id": m.id,
+        "created_at": m.created_at,
+        "reference": m.reference,
+        "status": m.status,
+        # Mandates DO have a direct link to the customer
+        "customer": getattr(m.links, 'customer', None) if getattr(m, 'links', None) else None
+    })
+
+# 6. Push Mandates to Supabase
+if mandates_to_insert:
+    supabase.table("Mandates").upsert(mandates_to_insert).execute()
+    print(f"Successfully synced {len(mandates_to_insert)} mandates.")
