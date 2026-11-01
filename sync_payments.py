@@ -12,9 +12,9 @@ supabase: Client = create_client(
     os.environ['SUPABASE_KEY']
 )
 
-# 2. Fetch the latest payments
-# (Fetches the 100 most recent. You can adjust this or filter by date later)
-payments = gc_client.payments.list(limit=100).records
+# 2. Fetch the payments
+
+payments = gc_client.payments.all()
 
 # 3. Format the data to match your Supabase table
 records_to_insert = []
