@@ -19,20 +19,22 @@ payments = gc_client.payments.all()
 # 3. Format the data to match your Supabase table
 records_to_insert = []
 for p in payments:
-    records_to_insert.append({
-        "id": p.id,
-        "created_at": p.created_at,
-        "charge_date": p.charge_date,
-        "amount": p.amount / 100.0, # GoCardless sends pence (e.g., 1000 for £10)
-        "description": p.description,
-        "currency": p.currency,
-        "status": p.status,
-        "amount_refunded": (p.amount_refunded / 100.0) if p.amount_refunded else 0,
-        "reference": p.reference,
-        # Fees and payout dates require querying the payouts endpoint separately
-        "transaction_fee": None, 
-        "payout_date": None 
-    })
+        records_to_insert.append({
+            "id": p.id,
+            "created_at": p.created_at,
+            "charge_date": p.charge_date,
+            "amount": p.amount / 100.0,
+            "description": p.description,
+            "currency": p.currency,
+            "status": p.status,
+            "amount_refunded": (p.amount_refunded / 100.0) if p.amount_refunded else 0,
+            "transaction_fee": None,
+            "payout_date": None,
+            # Left side matches your new Supabase columns
+            # Right side still pulls from the GoCardless links object
+            "mandate": p.links.mandate if getattr(p, 'links', None) else None,
+            "customer": p.links.customer if getattr(p, 'links', None) else None
+        })
 
 # 4. Push to Supabase
 if records_to_insert:
