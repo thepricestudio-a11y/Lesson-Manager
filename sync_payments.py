@@ -30,12 +30,11 @@ for p in payments:
             "amount_refunded": (p.amount_refunded / 100.0) if p.amount_refunded else 0,
             "transaction_fee": None,
             "payout_date": None,
-            # Left side matches your new Supabase columns
-            # Right side still pulls from the GoCardless links object
-            "mandate": p.links.mandate if getattr(p, 'links', None) else None,
-            "customer": p.links.customer if getattr(p, 'links', None) else None
+            # Safely grab the mandate if it exists
+            "mandate": getattr(p.links, 'mandate', None) if getattr(p, 'links', None) else None,
+            # Payments do not have a direct customer link in GoCardless
+            "customer": None 
         })
-
 # 4. Push to Supabase
 if records_to_insert:
     # Upsert updates the row if the ID already exists, or inserts it if it's new
