@@ -12,9 +12,12 @@ supabase: Client = create_client(
     os.environ['SUPABASE_KEY']
 )
 
-# 2. Fetch the payments
-
-payments = gc_client.payments.all()
+# 2. Fetch the payments since August 1, 2026
+payments = gc_client.payments.all(
+    created_at={
+        "gte": "2026-08-01T00:00:00Z"
+    }
+)
 
 # 3. Format the data to match your Supabase table
 records_to_insert = []
