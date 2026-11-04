@@ -22,11 +22,18 @@ sb_customers = sb_customers_response.data
 email_to_sb_id = {c['email'].lower(): c['id'] for c in sb_customers if c.get('email')}
 gc_id_to_sb_id = {c['gocardless_id']: c['id'] for c in sb_customers if c.get('gocardless_id')}
 
-customers_to_update = []
+# Change this to a dictionary to enforce unique Supabase IDs
+customers_to_update = {} 
 customers_to_insert = []
+
+# Emails of departing customers to explicitly ignore (from our earlier fix)
+ignored_emails = ["claireuphill@me.com"]
 
 for c in customers:
     gc_email = c.email.lower() if c.email else ""
+    
+    if gc_email in ignored_emails:
+        continue
     
     if c.id in gc_id_to_sb_id:
         sb_id = gc_id_to_sb_id[c.id]
@@ -46,14 +53,18 @@ for c in customers:
     
     if sb_id:
         record["id"] = sb_id
-        customers_to_update.append(record) # Has an ID, goes to upsert
+        # By using the sb_id as the dictionary key, any duplicate emails 
+        # will simply overwrite the previous entry instead of stacking up
+        customers_to_update[sb_id] = record 
     else:
-        customers_to_insert.append(record) # No ID, goes to insert
+        customers_to_insert.append(record)
 
-# Execute separately to prevent the SDK from padding missing IDs with nulls
-if customers_to_update:
-    supabase.table("customers").upsert(customers_to_update).execute()
-    print(f"Successfully updated {len(customers_to_update)} existing customers.")
+# Convert the dictionary values back into a list for Supabase
+update_list = list(customers_to_update.values())
+
+if update_list:
+    supabase.table("customers").upsert(update_list).execute()
+    print(f"Successfully updated {len(update_list)} existing customers.")
 
 if customers_to_insert:
     supabase.table("customers").insert(customers_to_insert).execute()
