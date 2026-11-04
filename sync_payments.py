@@ -22,7 +22,9 @@ sb_customers = sb_customers_response.data
 email_to_sb_id = {c['email'].lower(): c['id'] for c in sb_customers if c.get('email')}
 gc_id_to_sb_id = {c['gocardless_id']: c['id'] for c in sb_customers if c.get('gocardless_id')}
 
-customers_to_upsert = []
+customers_to_update = []
+customers_to_insert = []
+
 for c in customers:
     gc_email = c.email.lower() if c.email else ""
     
@@ -44,13 +46,18 @@ for c in customers:
     
     if sb_id:
         record["id"] = sb_id
-        
-    customers_to_upsert.append(record)
+        customers_to_update.append(record) # Has an ID, goes to upsert
+    else:
+        customers_to_insert.append(record) # No ID, goes to insert
 
-if customers_to_upsert:
-    supabase.table("customers").upsert(customers_to_upsert).execute()
-    print(f"Successfully synced {len(customers_to_upsert)} customers.")
+# Execute separately to prevent the SDK from padding missing IDs with nulls
+if customers_to_update:
+    supabase.table("customers").upsert(customers_to_update).execute()
+    print(f"Successfully updated {len(customers_to_update)} existing customers.")
 
+if customers_to_insert:
+    supabase.table("customers").insert(customers_to_insert).execute()
+    print(f"Successfully inserted {len(customers_to_insert)} new customers.")
 # ==========================================
 # STEP 2: SYNC MANDATES (Children of Customers)
 # ==========================================
