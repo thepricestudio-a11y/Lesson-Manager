@@ -12,12 +12,10 @@ supabase: Client = create_client(
     os.environ['SUPABASE_KEY']
 )
 
-# 2. Fetch the payments by charge date using the params dictionary
+# 2. Fetch the payments by charge date using the bracket notation inside params
 payments = gc_client.payments.all(
     params={
-        "charge_date": {
-            "gte": "2026-08-01"
-        }
+        "charge_date[gte]": "2026-08-01"
     }
 )
 
