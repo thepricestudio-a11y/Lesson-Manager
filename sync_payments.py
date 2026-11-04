@@ -44,41 +44,68 @@ if records_to_insert:
     supabase.table("payments").upsert(records_to_insert).execute()
     print(f"Successfully synced {len(records_to_insert)} payments.")
 
-# 5. Fetch Mandates
-mandates = gc_client.mandates.all()
-mandates_to_insert = []
-
-for m in mandates:
-    mandates_to_insert.append({
-        "id": m.id,
-        "created_at": m.created_at,
-        "reference": m.reference,
-        "status": m.status,
-        # Mandates DO have a direct link to the customer
-        "customer": getattr(m.links, 'customer', None) if getattr(m, 'links', None) else None
-    })
-
-# 6. Push Mandates to Supabase
-if mandates_to_insert:
-    supabase.table("mandates").upsert(mandates_to_insert).execute()
-    print(f"Successfully synced {len(mandates_to_insert)} mandates.")
-
-# 7. Fetch Customers
+# 5. Fetch Customers & Match by Email
 customers = gc_client.customers.all()
-customers_to_insert = []
+sb_customers_response = supabase.table("customers").select("id, email, gocardless_id").execute()
+sb_customers = sb_customers_response.data
 
+# Create lookup dictionaries to find matches quickly
+email_to_sb_id = {c['email'].lower(): c['id'] for c in sb_customers if c.get('email')}
+gc_id_to_sb_id = {c['gocardless_id']: c['id'] for c in sb_customers if c.get('gocardless_id')}
+
+customers_to_upsert = []
 for c in customers:
-    customers_to_insert.append({
-        "id": c.id,
-        "created_at": c.created_at,
+    gc_email = c.email.lower() if c.email else ""
+    
+    # 1. Check if already linked via GoCardless ID
+    if c.id in gc_id_to_sb_id:
+        sb_id = gc_id_to_sb_id[c.id]
+    # 2. Check if Joanna created this profile manually (match by email)
+    elif gc_email in email_to_sb_id:
+        sb_id = email_to_sb_id[gc_email]
+    # 3. Brand new customer not in system
+    else:
+        sb_id = None 
+
+    record = {
+        "gocardless_id": c.id,
         "email": c.email,
         "given_name": c.given_name,
         "family_name": c.family_name,
         "company_name": c.company_name,
         "phone_number": c.phone_number
+    }
+    
+    # Only include the ID if we found a match; otherwise Supabase generates a new UUID
+    if sb_id:
+        record["id"] = sb_id
+        
+    customers_to_upsert.append(record)
+
+if customers_to_upsert:
+    supabase.table("customers").upsert(customers_to_upsert).execute()
+    print(f"Successfully synced {len(customers_to_upsert)} customers.")
+
+# 6. Fetch Mandates & Link to UUIDs
+mandates = gc_client.mandates.all()
+
+# Refresh customer mapping so we have the latest UUIDs (including newly created ones)
+updated_sb_customers = supabase.table("customers").select("id, gocardless_id").execute().data
+gc_id_to_uuid = {c['gocardless_id']: c['id'] for c in updated_sb_customers if c.get('gocardless_id')}
+
+mandates_to_upsert = []
+for m in mandates:
+    gc_customer_id = getattr(m.links, 'customer', None) if getattr(m, 'links', None) else None
+    sb_customer_uuid = gc_id_to_uuid.get(gc_customer_id) if gc_customer_id else None
+
+    mandates_to_upsert.append({
+        "id": m.id,
+        "created_at": m.created_at,
+        "reference": m.reference,
+        "status": m.status,
+        "customer": sb_customer_uuid # Inserts the UUID, protecting referential integrity
     })
 
-# 8. Push Customers to Supabase
-if customers_to_insert:
-    supabase.table("customers").upsert(customers_to_insert).execute()
-    print(f"Successfully synced {len(customers_to_insert)} customers.")
+if mandates_to_upsert:
+    supabase.table("mandates").upsert(mandates_to_upsert).execute()
+    print(f"Successfully synced {len(mandates_to_upsert)} mandates.")
