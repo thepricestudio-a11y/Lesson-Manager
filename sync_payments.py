@@ -12,10 +12,12 @@ supabase: Client = create_client(
     os.environ['SUPABASE_KEY']
 )
 
-# 2. Fetch the payments since August 1, 2026
+# 2. Fetch the payments by charge date using the params dictionary
 payments = gc_client.payments.all(
-    created_at={
-        "gte": "2026-07-20T00:00:00Z"
+    params={
+        "charge_date": {
+            "gte": "2026-08-01"
+        }
     }
 )
 
