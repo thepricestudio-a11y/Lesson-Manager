@@ -14,7 +14,7 @@ supabase: Client = create_client(
 
 # 2. Fetch the payments since August 1, 2026
 payments = gc_client.payments.all(
-    charge_date={
+    created_at={
         "gte": "2026-07-20T00:00:00Z"
     }
 )
