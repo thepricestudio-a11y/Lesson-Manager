@@ -23,7 +23,7 @@
 <body>
     <div class="emojis">🎹 🌿 🎷</div>
     <h1>Studio Hub</h1>
-    <button onclick="logout()" class="logout-btn">Log Out</button>
+<button onclick="window.supabaseClient.auth.signOut().then(() => window.location.href='index.html')" class="logout-btn">Log Out</button>
 
     <div class="menu-card">
         <button onclick="window.location.href='onboarding.html'" class="menu-btn">👋 New Customer Onboarding</button>
