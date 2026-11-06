@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Customer Statement</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="js/supabase-config.js"></script>
+    <script src="js/bouncer.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Merriweather:ital,wght@0,400;0,700;1,400&family=Nunito:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root { --tuxedo-black: #1a1a1a; --tuxedo-white: #ffffff; --nature-green: #4a7c59; --wood: #8b5a2b; --bg: #f0f2f0; --text: #2c362c; }
+        body { font-family: 'Nunito', sans-serif; padding: 20px; max-width: 800px; margin: 0 auto; background: var(--bg); color: var(--text); }
+        .statement-card { background: var(--tuxedo-white); padding: 40px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08); border-top: 6px solid var(--tuxedo-black); }
+        .header-controls { display: flex; justify-content: space-between; margin-bottom: 20px; }
+        button { background: var(--tuxedo-black); color: var(--tuxedo-white); border: none; padding: 10px 15px; border-radius: 6px; cursor: pointer; font-family: 'Nunito', sans-serif; font-weight: bold; }
+        button:hover { background: var(--nature-green); }
+        .back-btn { background: none; color: var(--nature-green); border: 1px solid var(--nature-green); }
+        .back-btn:hover { background: var(--nature-green); color: white; }
+        .studio-header { text-align: center; margin-bottom: 40px; border-bottom: 2px solid var(--wood); padding-bottom: 20px; }
+        .studio-header h1 { font-family: 'Merriweather', serif; margin: 0; font-size: 28px; }
+        .customer-info { margin-bottom: 30px; font-size: 18px; }
+        .customer-info h2 { font-family: 'Merriweather', serif; margin: 0 0 5px 0; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 30px; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #e0e0e0; }
+        th { background-color: #fafafa; font-weight: bold; color: var(--tuxedo-black); border-bottom: 2px solid var(--tuxedo-black); }
+        .amount-col { text-align: right; }
+        .balance-col { text-align: right; font-weight: bold; }
+        .summary-box { float: right; border: 2px solid var(--tuxedo-black); padding: 15px 25px; border-radius: 8px; text-align: right; font-size: 18px; background: #fafafa; }
+        @media print { body { background: white; padding: 0; } .statement-card { box-shadow: none; border: none; padding: 0; } .no-print { display: none !important; } th { background-color: transparent; } .summary-box { background: transparent; } }
+    </style>
+</head>
+<body>
+    <div class="header-controls no-print">
+        <button onclick="window.location.href='billing.html'" class="back-btn">← Back to Billing</button>
+        <button onclick="window.print()">🖨️ Print Statement</button>
+    </div>
+    <div class="statement-card">
+        <div class="studio-header"><div style="font-size: 2rem; letter-spacing: 5px; margin-bottom: 5px;">🎹 🌿</div><h1>Statement of Account</h1></div>
+        <div class="customer-info" id="customerInfo">Loading customer details...</div>
+        <table>
+            <thead><tr><th>Date</th><th>Description</th><th class="amount-col">Charge</th><th class="amount-col">Payment</th><th class="balance-col">Balance</th></tr></thead>
+            <tbody id="transactionBody"><tr><td colspan="5" style="text-align:center;">Loading history...</td></tr></tbody>
+        </table>
+        <div class="summary-box" id="summaryBox" style="display:none;">Final Balance: <br><strong style="font-size: 24px; font-family: 'Merriweather', serif;" id="finalBalance">£0.00</strong></div>
+        <div style="clear: both;"></div>
+    </div>
+
+    <script>
+        // Extract Customer ID from URL Parameter
+        const urlParams = new URLSearchParams(window.location.search);
+        const CUSTOMER_ID = urlParams.get('customerId');
+
+        async function loadStatement() {
+            if (!CUSTOMER_ID) { document.getElementById('customerInfo').innerHTML = "Error: No Customer Selected."; return; }
+
+            try {
+                const { data: customer, error: custErr } = await window.supabaseClient.from('customers').select('*').eq('id', CUSTOMER_ID).single();
+                if (custErr) throw custErr;
+
+                const { data: lessons, error: lesErr } = await window.supabaseClient.from('lessons').select('created_at, lesson_fee, pupils!inner(pupil_name, customer)').eq('pupils.customer', CUSTOMER_ID);
+                if (lesErr) throw lesErr;
+
+                const { data: payments, error: payErr } = await window.supabaseClient.from('payments').select('created_at, charge_date, amount, status, mandates!inner(customer)').eq('mandates.customer', CUSTOMER_ID);
+                if (payErr) throw payErr;
+
+                let transactions = [];
+                let runningBalance = parseFloat(customer.starting_balance || 0);
+
+                if (runningBalance !== 0) { transactions.push({ date: new Date(2000, 0, 1), desc: 'Opening Balance', charge: runningBalance > 0 ? runningBalance : 0, payment: runningBalance < 0 ? Math.abs(runningBalance) : 0, isStarting: true }); runningBalance = 0; }
+                lessons.forEach(l => { transactions.push({ date: new Date(l.created_at), desc: `Lesson (${l.pupils.pupil_name})`, charge: parseFloat(l.lesson_fee || 0), payment: 0 }); });
+                payments.forEach(p => { let payDate = new Date(p.charge_date || p.created_at); transactions.push({ date: payDate, desc: `Payment Received`, charge: 0, payment: parseFloat(p.amount || 0) }); });
+
+                transactions.sort((a, b) => a.date - b.date);
+
+                document.getElementById('customerInfo').innerHTML = `<h2>${customer.given_name} ${customer.family_name}</h2><span style="color: #666;">Date Generated: ${new Date().toLocaleDateString()}</span>`;
+                let tbody = '';
+                
+                if (transactions.length === 0) {
+                    tbody = '<tr><td colspan="5" style="text-align:center;">No history available.</td></tr>';
+                } else {
+                    transactions.forEach(t => {
+                        runningBalance += (t.charge - t.payment);
+                        let dateText = t.isStarting ? '-' : t.date.toLocaleDateString();
+                        let chargeText = t.charge > 0 ? `£${t.charge.toFixed(2)}` : '';
+                        let payText = t.payment > 0 ? `£${t.payment.toFixed(2)}` : '';
+                        tbody += `<tr><td>${dateText}</td><td>${t.desc}</td><td class="amount-col">${chargeText}</td><td class="amount-col">${payText}</td><td class="balance-col">£${runningBalance.toFixed(2)}</td></tr>`;
+                    });
+                }
+                document.getElementById('transactionBody').innerHTML = tbody;
+
+                const finalBalBox = document.getElementById('finalBalance');
+                if (runningBalance > 0) { finalBalBox.innerText = `£${runningBalance.toFixed(2)} Owed`; finalBalBox.style.color = '#d9534f'; } 
+                else if (runningBalance < 0) { finalBalBox.innerText = `£${Math.abs(runningBalance).toFixed(2)} (Credit)`; finalBalBox.style.color = 'var(--nature-green)'; } 
+                else { finalBalBox.innerText = `£0.00`; finalBalBox.style.color = 'var(--nature-green)'; }
+                
+                document.getElementById('summaryBox').style.display = 'block';
+
+            } catch (error) {
+                console.error("Error loading statement:", error);
+                document.getElementById('transactionBody').innerHTML = `<tr><td colspan="5" style="text-align:center; color:red;">Error loading statement. Please try again.</td></tr>`;
+            }
+        }
+        loadStatement();
+    </script>
+</body>
+</html>

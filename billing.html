@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Billing Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="js/supabase-config.js"></script>
+    <script src="js/bouncer.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Merriweather:ital,wght@0,400;0,700;1,400&family=Nunito:wght@400;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        :root { --tuxedo-black: #1a1a1a; --tuxedo-white: #ffffff; --nature-green: #4a7c59; --wood: #8b5a2b; --bg: #f0f2f0; --card-bg: #ffffff; --text: #2c362c; --alert-bg: #fff3cd; --alert-border: #ffecb5; --alert-text: #664d03; }
+        body { font-family: 'Nunito', sans-serif; padding: 20px; max-width: 650px; margin: 0 auto; background: var(--bg); color: var(--text); }
+        .header-container { text-align: center; margin-bottom: 25px; }
+        .emojis { font-size: 2rem; letter-spacing: 10px; margin-bottom: 5px; }
+        h1 { font-family: 'Merriweather', serif; color: var(--tuxedo-black); margin-top: 0; }
+        .back-btn { background: none; border: none; color: var(--nature-green); font-weight: bold; font-size: 16px; cursor: pointer; padding: 0; margin-bottom: 20px; font-family: 'Nunito', sans-serif; }
+        .back-btn:hover { text-decoration: underline; }
+        .gc-alert-section { background: var(--alert-bg); border: 1px solid var(--alert-border); border-left: 6px solid #ffc107; padding: 20px; border-radius: 12px; margin-bottom: 30px; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05); }
+        .gc-alert-title { font-family: 'Merriweather', serif; font-weight: bold; color: var(--alert-text); margin-bottom: 10px; font-size: 16px; }
+        .gc-alert-item { display: flex; justify-content: space-between; align-items: center; background: white; padding: 10px 15px; border-radius: 8px; margin-bottom: 8px; border: 1px solid rgba(0,0,0,0.05); }
+        .customer-card { background: var(--card-bg); padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08); margin-bottom: 15px; border-left: 6px solid var(--tuxedo-black); display: flex; justify-content: space-between; align-items: center; }
+        .customer-info { flex-grow: 1; }
+        .customer-name { font-size: 18px; font-weight: bold; margin-bottom: 2px; color: var(--tuxedo-black); }
+        .details-text { font-size: 13px; color: #556055; margin-bottom: 8px; font-style: italic; }
+        .customer-balance { font-size: 16px; font-family: 'Merriweather', serif; }
+        .balance-positive { color: #d9534f; } 
+        .balance-zero { color: var(--nature-green); }
+        .statement-btn { background: var(--tuxedo-black); color: var(--tuxedo-white); border: 2px solid var(--tuxedo-black); padding: 10px 15px; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: bold; font-family: 'Nunito', sans-serif; transition: all 0.3s ease; white-space: nowrap; margin-left: 15px; }
+        .statement-btn:hover { background: var(--nature-green); border-color: var(--nature-green); }
+        .section-header { font-family: 'Merriweather', serif; font-size: 18px; margin-bottom: 15px; color: var(--tuxedo-black); border-bottom: 2px solid #ddd; padding-bottom: 5px; }
+        #loading { text-align: center; font-style: italic; color: #666; margin-top: 30px; }
+    </style>
+</head>
+<body>
+    <button onclick="window.location.href='menu.html'" class="back-btn">← Back to Menu</button>
+    <div class="header-container"><div class="emojis">💰 🌿</div><h1>Customer Balances</h1></div>
+    <div id="loading">Loading accounts...</div>
+    <div id="noGcAlertContainer"></div>
+    <div id="billingList"></div>
+
+    <script>
+        async function loadBalances() {
+            try {
+                const [balancesRes, customersRes, pupilsRes] = await Promise.all([
+                    window.supabaseClient.from('customer_balances').select('*').order('current_balance_owed', { ascending: false }),
+                    window.supabaseClient.from('customers').select('id, gocardless_id, email'),
+                    window.supabaseClient.from('pupils').select('customer')
+                ]);
+
+                if (balancesRes.error) throw balancesRes.error;
+                if (customersRes.error) throw customersRes.error;
+
+                const balances = balancesRes.data || [];
+                const customers = customersRes.data || [];
+                const customersWithPupils = new Set((pupilsRes.data || []).map(p => p.customer));
+                const gcMap = {}; customers.forEach(c => { gcMap[c.id] = c.gocardless_id; });
+
+                document.getElementById('loading').style.display = 'none';
+
+                if (balances.length === 0) {
+                    document.getElementById('billingList').innerHTML = '<p style="text-align:center;">No customers found.</p>';
+                    return;
+                }
+
+                const activeBalances = balances.filter(b => {
+                    const hasPupils = customersWithPupils.has(b.customer_id);
+                    const balanceOwed = parseFloat(b.current_balance_owed || 0);
+                    return hasPupils || balanceOwed !== 0;
+                });
+
+                const noGcCustomers = activeBalances.filter(b => !gcMap[b.customer_id]);
+                const alertContainer = document.getElementById('noGcAlertContainer');
+
+                if (noGcCustomers.length > 0) {
+                    let alertHtml = `<div class="gc-alert-section"><div class="gc-alert-title">⚠️ Action Required: Missing GoCardless Profiles (${noGcCustomers.length})</div><div style="font-size: 13px; color: #856404; margin-bottom: 12px;">These accounts were created in Studio Hub but have no matching GoCardless record yet. Ensure they register with their email address.</div>`;
+                    noGcCustomers.forEach(nc => {
+                        alertHtml += `<div class="gc-alert-item"><div><strong>${nc.customer_name}</strong><div style="font-size: 12px; color: #666;">Owed: £${parseFloat(nc.current_balance_owed || 0).toFixed(2)}</div></div><span style="background: #ffc107; color: #333; padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: bold;">No GC Profile</span></div>`;
+                    });
+                    alertHtml += `</div>`;
+                    alertContainer.innerHTML = alertHtml;
+                }
+
+                const billingList = document.getElementById('billingList');
+                billingList.innerHTML = `<div class="section-header">All Accounts</div>`;
+
+                if (activeBalances.length === 0) {
+                    billingList.innerHTML += '<p style="text-align:center; color: #666; margin-top: 20px;">No active accounts to display.</p>';
+                    return;
+                }
+
+                activeBalances.forEach(customer => {
+                    const starting = parseFloat(customer.starting_balance || 0);
+                    const incurred = parseFloat(customer.total_lesson_fees || 0);
+                    const paid = parseFloat(customer.total_payments || 0);
+                    const balance = parseFloat(customer.current_balance_owed || 0);
+                    const formattedBalance = `£${Math.abs(balance).toFixed(2)}`;
+                    
+                    let balanceClass = ''; let balanceLabel = '';
+                    if (balance > 0) { balanceClass = 'balance-positive'; balanceLabel = 'Amount Owed:'; } 
+                    else if (balance < 0) { balanceClass = 'balance-zero'; balanceLabel = 'In Credit:'; } 
+                    else { balanceClass = 'balance-zero'; balanceLabel = 'Balance:'; }
+                    
+                    // URL Param Routing
+                    const statementUrl = `statement.html?customerId=${customer.customer_id}`;
+                    const hasGc = gcMap[customer.customer_id];
+
+                    billingList.innerHTML += `
+                        <div class="customer-card">
+                            <div class="customer-info">
+                                <div class="customer-name">${customer.customer_name} ${!hasGc ? '<span style="font-size: 11px; background: #fff3cd; color: #856404; border: 1px solid #ffeeba; padding: 2px 6px; border-radius: 4px; margin-left: 8px; vertical-align: middle;">No GC Profile</span>' : ''}</div>
+                                <div class="details-text">Start: £${starting.toFixed(2)} | Incurred: £${incurred.toFixed(2)} | Paid: £${paid.toFixed(2)}</div>
+                                <div class="customer-balance ${balanceClass}">${balanceLabel} <strong>${formattedBalance}</strong></div>
+                            </div>
+                            <button onclick="window.location.href='${statementUrl}'" class="statement-btn">View Statement</button>
+                        </div>
+                    `;
+                });
+            } catch (error) {
+                console.error("Error loading balances:", error);
+                document.getElementById('loading').innerText = "Error loading data. Check console.";
+            }
+        }
+        loadBalances();
+    </script>
+</body>
+</html>

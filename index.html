@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Studio Hub - Login</title>
+    <link href="https://fonts.googleapis.com/css2?family=Merriweather:ital,wght@0,400;0,700;1,400&family=Nunito:wght@400;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="js/supabase-config.js"></script>
+    <style>
+        :root { --tuxedo-black: #1a1a1a; --nature-green: #4a7c59; --bg: #f0f2f0; }
+        body { font-family: 'Nunito', sans-serif; background: var(--bg); display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .login-card { background: white; padding: 40px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); border-top: 6px solid var(--tuxedo-black); text-align: center; width: 100%; max-width: 350px; }
+        h1 { font-family: 'Merriweather', serif; color: var(--tuxedo-black); margin-bottom: 30px; }
+        input { width: 100%; padding: 12px; margin-bottom: 15px; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; font-family: 'Nunito', sans-serif; }
+        button { width: 100%; background: var(--nature-green); color: white; border: none; padding: 12px; border-radius: 6px; font-size: 16px; font-weight: bold; cursor: pointer; }
+        button:hover { background: #3b6347; }
+    </style>
+    <script>
+        async function login() {
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const btn = document.getElementById('loginBtn');
+            btn.innerText = "Authenticating...";
+            
+            const { data, error } = await window.supabaseClient.auth.signInWithPassword({ email, password });
+            if (error) {
+                alert("Login failed: " + error.message);
+                btn.innerText = "Login";
+            } else {
+                window.location.href = 'menu.html';
+            }
+        }
+    </script>
+</head>
+<body>
+    <div class="login-card">
+        <div style="font-size: 2.5rem; letter-spacing: 10px; margin-bottom: 10px;">🎹🌿</div>
+        <h1>Studio Hub</h1>
+        <input type="email" id="email" placeholder="Email Address" />
+        <input type="password" id="password" placeholder="Password" />
+        <button id="loginBtn" onclick="login()">Login</button>
+    </div>
+</body>
+</html>
