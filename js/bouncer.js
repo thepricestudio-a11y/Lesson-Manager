@@ -1,6 +1,6 @@
 // Protects pages by kicking unauthenticated users back to index.html
 async function checkAuth() {
-    const { data: { session } } = await supabase.auth.getSession();
+    const { data: { session } } = await window.supabaseClient.auth.getSession();
     if (!session) {
         window.location.href = 'index.html';
     }
@@ -8,6 +8,6 @@ async function checkAuth() {
 checkAuth();
 
 async function logout() {
-    await supabase.auth.signOut();
+    await window.supabaseClient.auth.signout();
     window.location.href = 'index.html';
 }
