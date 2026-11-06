@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lesson Logger</title>
+    
+    <!-- Supabase & EmailJS Libraries -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+    
+    <link href="https://fonts.googleapis.com/css2?family=Merriweather:ital,wght@0,400;0,700;1,400&family=Nunito:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --tuxedo-black: #1a1a1a;
+            --tuxedo-white: #ffffff;
+            --nature-green: #4a7c59;
+            --wood: #8b5a2b; 
+            --bg: #f0f2f0; 
+            --card-bg: #ffffff;
+            --text: #2c362c;
+            --border: #e0e0e0;
+        }
+
+        body { 
+            font-family: 'Nunito', sans-serif; 
+            padding: 20px; 
+            max-width: 550px; 
+            margin: 0 auto; 
+            background: var(--bg); 
+            color: var(--text);
+        }
+
+        .header-container { text-align: center; margin-bottom: 25px; }
+        .emojis { font-size: 2rem; letter-spacing: 10px; margin-bottom: 5px; }
+        h1, h2, h3 { font-family: 'Merriweather', serif; color: var(--tuxedo-black); margin-top: 0; }
+
+        .card { 
+            background: var(--card-bg); padding: 25px; border-radius: 12px; 
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08); margin-bottom: 20px; 
+            border-top: 6px solid var(--tuxedo-black); border-bottom: 3px solid var(--wood);
+        }
+
+        label { font-weight: 700; color: var(--tuxedo-black); display: inline-block; margin-top: 10px; }
+        
+        select, input, textarea { 
+            width: 100%; padding: 10px; margin-top: 5px; margin-bottom: 15px; 
+            box-sizing: border-box; border: 2px solid var(--border); border-radius: 8px;
+            font-family: 'Nunito', sans-serif; background-color: var(--tuxedo-white); transition: border-color 0.3s ease;
+        }
+
+        /* Adjust the file input styling slightly */
+        input[type="file"] { background-color: transparent; border: none; padding: 0; margin-top: 10px; }
+
+        select:focus, input:focus, textarea:focus { outline: none; border-color: var(--tuxedo-black); }
+
+        button { 
+            background: var(--tuxedo-black); color: var(--tuxedo-white); border: 2px solid var(--tuxedo-black); 
+            padding: 12px 20px; border-radius: 8px; cursor: pointer; width: 100%; font-size: 16px; 
+            font-weight: bold; font-family: 'Nunito', sans-serif; transition: all 0.3s ease; box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        }
+
+        button:hover { background: var(--nature-green); border-color: var(--nature-green); transform: translateY(-1px); }
+
+        .history-item { 
+            border-left: 4px solid var(--tuxedo-black); background: #fafafa; padding: 12px; 
+            margin-bottom: 10px; border-radius: 0 8px 8px 0; font-size: 0.95em; box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+        
+        .history-item:last-child { margin-bottom: 0; }
+        .date-badge { font-weight: 700; color: var(--wood); font-family: 'Merriweather', serif; font-size: 0.9em; }
+        .comments-text { color: #556055; margin-top: 5px; display: block; }
+    </style>
+</head>
+<body>
+
+    <div class="header-container">
+        <div class="emojis">🎹 🐈‍⬛ 🌿 🎷</div>
+        <h1>Lesson Logger</h1>
+    </div>
+
+    <div class="card">
+        <h3>Select Student</h3>
+        <select id="pupilSelect" onchange="handlePupilChange()">
+            <option value="">-- Choose a Pupil --</option>
+        </select>
+    </div>
+
+    <div class="card" id="historyCard" style="display:none;">
+        <h3>Recent Lessons</h3>
+        <div id="historyBox"></div>
+    </div>
+
+    <div class="card" id="formCard" style="display:none;">
+        <h3>Today's Lesson</h3>
+        
+        <label>Attendance:</label>
+        <select id="attendanceSelect"></select>
+
+        <label>Location:</label>
+        <select id="locationSelect"></select>
+
+        <label>Duration (mins):</label>
+        <input type="number" id="duration" value="30">
+
+        <label>Private Notes (Not Emailed):</label>
+        <textarea id="comments" rows="3" placeholder="Notes for your own records..."></textarea>
+
+        <label>Feedback (Emailed to Customer):</label>
+        <textarea id="feedback" rows="4" placeholder="Great job today! Keep practicing..."></textarea>
+
+        <label>Attach File (Sheet music, audio, etc.):</label>
+        <input type="file" id="fileInput">
+
+        <button id="saveBtn" onclick="saveLesson()">Save Lesson</button>
+    </div>
+
+    <script>
+        // --- 1. CONFIGURATION ---
+        const supabaseUrl = 'https://rjlldqbqkmbgluoafapz.supabase.co';
+        const supabaseKey = 'sb_publishable_7sI-qeqiY0PWtgxVNKarsw_GXv_uT-4'; 
+        const supabaseClient = window.supabase.createClient(supabaseUrl, supabaseKey);
+
+        const EMAILJS_PUBLIC_KEY = 'LnTC1Ncj8AZSJr9ge'; 
+        const EMAILJS_SERVICE_ID = 'service_6h8d5nf';
+        const EMAILJS_TEMPLATE_ID = 'template_p8h1t8n';
+        
+        emailjs.init({ publicKey: EMAILJS_PUBLIC_KEY });
+
+        const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxGCdZUEIaR3lYQTeHjJJYidHkuDIfP_RPcS2xmwtbuOSTcoyhFc1cIoqlOZl7xnAAwZA/exec';
+
+        let pupils = [];
+        let locations = [];
+        let attendanceRules = [];
+
+        // --- 2. INITIALIZATION ---
+        async function initApp() {
+            try {
+                const [pupilsRes, locsRes, rulesRes] = await Promise.all([
+                    supabaseClient.from('pupils').select('*').order('pupil_name'),
+                    supabaseClient.from('locations').select('*').order('location_name'),
+                    supabaseClient.from('attendance_rules').select('*').order('id')
+                ]);
+
+                pupils = pupilsRes.data || [];
+                locations = locsRes.data || [];
+                attendanceRules = rulesRes.data || [];
+
+                const pupilSelect = document.getElementById('pupilSelect');
+                pupils.forEach(p => {
+                    let opt = document.createElement('option');
+                    opt.value = p.pupil_id;
+                    opt.textContent = p.pupil_name;
+                    pupilSelect.appendChild(opt);
+                });
+
+                const locSelect = document.getElementById('locationSelect');
+                locations.forEach(l => {
+                    let opt = document.createElement('option');
+                    opt.value = l.id;
+                    opt.textContent = l.location_name;
+                    locSelect.appendChild(opt);
+                });
+
+                const attSelect = document.getElementById('attendanceSelect');
+                attendanceRules.forEach(a => {
+                    let opt = document.createElement('option');
+                    opt.value = a.id;
+                    opt.textContent = a.description;
+                    attSelect.appendChild(opt);
+                    
+                    if(a.description.toLowerCase().includes('present')) {
+                        opt.selected = true;
+                    }
+                });
+            } catch (error) {
+                console.error("Error during initialization:", error);
+            }
+        }
+
+        // --- 3. HANDLE PUPIL SELECTION ---
+        async function handlePupilChange() {
+            const pupilId = document.getElementById('pupilSelect').value;
+            const historyCard = document.getElementById('historyCard');
+            const formCard = document.getElementById('formCard');
+
+            if (!pupilId) {
+                historyCard.style.display = 'none';
+                formCard.style.display = 'none';
+                return;
+            }
+
+            const selectedPupil = pupils.find(p => p.pupil_id == pupilId);
+            if (selectedPupil && selectedPupil.default_location_id) {
+                document.getElementById('locationSelect').value = selectedPupil.default_location_id;
+            }
+
+            try {
+                const { data: history, error } = await supabaseClient
+                    .from('lessons')
+                    .select('*')
+                    .eq('pupil_id', pupilId)
+                    .order('created_at', { ascending: false })
+                    .limit(5);
+
+                if (error) console.error("Error fetching history:", error);
+
+                const historyBox = document.getElementById('historyBox');
+                historyBox.innerHTML = '';
+                
+                if (history && history.length > 0) {
+                    history.forEach(lesson => {
+                        const date = new Date(lesson.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+                        const attText = attendanceRules.find(a => a.id == lesson.attendance)?.description || 'N/A';
+                        
+                        let fileLinkHtml = lesson.file_upload ? `<br><a href="${lesson.file_upload}" target="_blank" style="color:var(--nature-green);font-size:0.85em;">📎 View Attachment</a>` : '';
+
+                        historyBox.innerHTML += `
+                            <div class="history-item">
+                                <span class="date-badge">${date}</span> — ${attText} (${lesson.duration}m)<br>
+                                <em class="comments-text">Notes: "${lesson.comments || 'N/A'}"</em>
+                                <em class="comments-text">Sent: "${lesson.feedback || 'N/A'}"</em>
+                                ${fileLinkHtml}
+                            </div>
+                        `;
+                    });
+                } else {
+                    historyBox.innerHTML = '<div class="history-item">No previous lessons found.</div>';
+                }
+
+                historyCard.style.display = 'block';
+                formCard.style.display = 'block';
+                document.getElementById('comments').value = '';
+                document.getElementById('feedback').value = '';
+            } catch (error) {
+                 console.error("Error loading history:", error);
+            }
+        }
+
+        // --- 4. SAVE LESSON & SEND EMAIL ---
+        async function saveLesson() {
+            const btn = document.getElementById('saveBtn');
+            btn.textContent = 'Preparing...';
+            btn.disabled = true;
+
+            const pupilId = document.getElementById('pupilSelect').value;
+            const selectedPupil = pupils.find(p => p.pupil_id == pupilId);
+            
+            const fileInput = document.getElementById('fileInput');
+            const file = fileInput.files[0];
+            let fileUrl = null;
+
+            try {
+                // 1. Handle Google Drive File Upload
+                if (file) {
+                    btn.textContent = 'Uploading to Drive...';
+                    
+                    const base64Data = await new Promise((resolve, reject) => {
+                        const reader = new FileReader();
+                        reader.onload = () => resolve(reader.result.split(',')[1]);
+                        reader.onerror = error => reject(error);
+                        reader.readAsDataURL(file);
+                    });
+
+                    const response = await fetch(GOOGLE_SCRIPT_URL, {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            filename: `${Date.now()}_${file.name}`,
+                            mimeType: file.type,
+                            base64: base64Data
+                        })
+                    });
+
+                    const result = await response.json();
+                    if (result.error) throw new Error(result.error);
+                    
+                    fileUrl = result.url; 
+                }
+
+                // 2. Save Lesson to Database
+                btn.textContent = 'Saving Database...';
+                
+                const feedbackText = document.getElementById('feedback').value;
+                const newLesson = {
+                    pupil_id: pupilId,
+                    attendance: document.getElementById('attendanceSelect').value,
+                    location_id: document.getElementById('locationSelect').value,
+                    duration: document.getElementById('duration').value,
+                    comments: document.getElementById('comments').value,
+                    feedback: feedbackText,
+                    file_upload: fileUrl
+                };
+
+                const { error: dbError } = await supabaseClient.from('lessons').insert([newLesson]);
+                if (dbError) throw dbError;
+
+                // 3. Conditional Email Logic
+                const hasFeedback = feedbackText.trim() !== "";
+                const hasFile = fileUrl !== null;
+
+                if ((hasFeedback || hasFile) && selectedPupil.email) {
+                    btn.textContent = 'Sending Email...';
+                    
+                    await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
+                        to_email: selectedPupil.email,
+                        to_name: selectedPupil.pupil_name,
+                        feedback: hasFeedback ? feedbackText : "Please find the attached file for today's lesson.",
+                        file_link: fileUrl || "No file attached."
+                    });
+                    
+                    alert('🐾 Lesson saved and emailed to ' + selectedPupil.email + '! 🎵');
+                } else {
+                    alert('🐾 Lesson saved locally. (No feedback/file, so no email sent) 🎵');
+                }
+                
+                fileInput.value = ''; 
+                handlePupilChange(); 
+
+            } catch (error) {
+                alert('Error: ' + error.message);
+                console.error(error);
+            } finally {
+                btn.textContent = 'Save Lesson';
+                btn.disabled = false;
+            }
+        }
+
+        initApp();
+    </script>
+</body>
+</html>

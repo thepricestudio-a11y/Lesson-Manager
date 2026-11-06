@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Customer Onboarding</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+    
+    <link href="https://fonts.googleapis.com/css2?family=Merriweather:ital,wght@0,400;0,700;1,400&family=Nunito:wght@400;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --tuxedo-black: #1a1a1a;
+            --tuxedo-white: #ffffff;
+            --nature-green: #4a7c59;
+            --bg: #f0f2f0; 
+            --text: #2c362c;
+            --border: #ccc;
+        }
+
+        body { 
+            font-family: 'Nunito', sans-serif; 
+            padding: 20px; 
+            max-width: 600px; 
+            margin: 0 auto; 
+            background: var(--bg); 
+            color: var(--text);
+        }
+
+        .header-container { text-align: center; margin-bottom: 25px; }
+        .emojis { font-size: 2rem; letter-spacing: 10px; margin-bottom: 5px; }
+        h1 { font-family: 'Merriweather', serif; color: var(--tuxedo-black); margin-top: 0; }
+
+        .back-btn {
+            background: none; border: none; color: var(--nature-green);
+            font-weight: bold; font-size: 16px; cursor: pointer; padding: 0;
+            margin-bottom: 20px; font-family: 'Nunito', sans-serif;
+        }
+        .back-btn:hover { text-decoration: underline; }
+
+        .form-card {
+            background: var(--tuxedo-white); 
+            padding: 30px; 
+            border-radius: 12px; 
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08); 
+            border-top: 6px solid var(--tuxedo-black);
+        }
+
+        .form-group { margin-bottom: 15px; }
+        label { display: block; font-weight: bold; margin-bottom: 5px; color: var(--tuxedo-black); }
+        input[type="text"], input[type="email"], input[type="tel"], input[type="number"], select { 
+            width: 100%; padding: 10px; border: 1px solid var(--border); 
+            border-radius: 6px; font-family: 'Nunito', sans-serif; font-size: 16px; box-sizing: border-box;
+            background-color: white;
+        }
+        input:focus, select:focus { outline: none; border-color: var(--nature-green); box-shadow: 0 0 5px rgba(74, 124, 89, 0.3); }
+
+        .section-title {
+            font-family: 'Merriweather', serif;
+            font-size: 18px;
+            margin-top: 25px;
+            margin-bottom: 15px;
+            padding-bottom: 5px;
+            border-bottom: 2px solid var(--nature-green);
+        }
+
+        .toggle-container {
+            display: flex; gap: 20px; margin-bottom: 20px;
+            background: #fafafa; padding: 15px; border-radius: 8px; border: 1px solid var(--border);
+        }
+        .toggle-container label { margin-bottom: 0; cursor: pointer; font-weight: normal; color: var(--text); display: flex; align-items: center; gap: 8px; }
+        .toggle-container input[type="radio"] { width: auto; transform: scale(1.2); }
+
+        .checkbox-group {
+            background: #f8f9fa; border: 1px solid var(--border); padding: 15px;
+            border-radius: 8px; margin-top: 20px; display: flex; align-items: center; gap: 10px;
+        }
+        .checkbox-group label { margin-bottom: 0; cursor: pointer; font-weight: 600; }
+        .checkbox-group input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--nature-green); cursor: pointer; }
+
+        .student-block {
+            background: #fafafa; border: 1px solid var(--border); padding: 20px;
+            border-radius: 8px; margin-bottom: 15px; position: relative;
+        }
+
+        .remove-btn {
+            position: absolute; top: 15px; right: 15px; background: #d9534f;
+            color: white; border: none; border-radius: 4px; cursor: pointer;
+            padding: 5px 10px; font-size: 12px; font-weight: bold;
+        }
+        .remove-btn:hover { background: #c9302c; }
+
+        .add-sibling-btn {
+            background: none; border: 2px dashed var(--nature-green); color: var(--nature-green);
+            padding: 12px; width: 100%; border-radius: 8px; cursor: pointer;
+            font-weight: bold; margin-bottom: 20px; font-family: 'Nunito', sans-serif;
+            transition: 0.3s; font-size: 16px;
+        }
+        .add-sibling-btn:hover { background: #eef5ef; }
+
+        .submit-btn {
+            background: var(--tuxedo-black); color: var(--tuxedo-white);
+            border: none; padding: 15px; width: 100%; border-radius: 8px;
+            cursor: pointer; font-size: 16px; font-weight: bold;
+            font-family: 'Nunito', sans-serif; margin-top: 20px; transition: 0.3s;
+        }
+        .submit-btn:hover { background: var(--nature-green); }
+        
+        #statusMessage { margin-top: 15px; text-align: center; font-weight: bold; }
+        .success { color: var(--nature-green); }
+        .error { color: #d9534f; }
+    </style>
+</head>
+<body>
+
+    <button onclick="window.top.location.href='<?!= appUrl ?>'" class="back-btn">← Back to Menu</button>
+
+    <div class="header-container">
+        <div class="emojis">👋 🎹</div>
+        <h1>Customer Setup</h1>
+    </div>
+
+    <div class="form-card">
+        <form id="onboardingForm">
+            
+            <div class="toggle-container">
+                <label>
+                    <input type="radio" name="customer_type" value="new" checked onchange="toggleCustomerMode()">
+                    New Customer (Parent)
+                </label>
+                <label>
+                    <input type="radio" name="customer_type" value="existing" onchange="toggleCustomerMode()">
+                    Existing Customer (Add Sibling)
+                </label>
+            </div>
+
+            <!-- Existing Customer Selection -->
+            <div id="existingCustomerSection" style="display: none;">
+                <div class="section-title">Select Parent</div>
+                <div class="form-group">
+                    <select id="existing_customer_select">
+                        <option value="">-- Loading Customers... --</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- New Customer Details -->
+            <div id="newCustomerSection">
+                <div class="section-title">Parent / Biller Details</div>
+                
+                <div class="form-group">
+                    <label>First Name *</label>
+                    <input type="text" id="given_name">
+                </div>
+                
+                <div class="form-group">
+                    <label>Last Name *</label>
+                    <input type="text" id="family_name">
+                </div>
+
+                <div class="form-group">
+                    <label>Email Address * (Used for GoCardless Sync)</label>
+                    <input type="email" id="email">
+                </div>
+
+                <div class="form-group">
+                    <label>Phone Number</label>
+                    <input type="tel" id="phone_number">
+                </div>
+
+                <div class="form-group">
+                    <label>Starting Balance (£) *</label>
+                    <input type="number" id="starting_balance" step="0.01" value="0.00">
+                </div>
+            </div>
+
+            <div class="section-title">Student Details</div>
+            
+            <div id="studentsContainer">
+                <div class="student-block">
+                    <div class="form-group">
+                        <label>Student Name *</label>
+                        <input type="text" class="pupil-name" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Student Email (Leave blank to use Parent's Email)</label>
+                        <input type="email" class="pupil-email">
+                    </div>
+                    <div class="form-group">
+                        <label>Default Location</label>
+                        <select class="location-select">
+                            <option value="">-- Loading Locations... --</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <button type="button" class="add-sibling-btn" onclick="addStudentBlock()">+ Add Another Student</button>
+
+            <!-- GoCardless Email Trigger Checkbox -->
+            <div class="checkbox-group">
+                <input type="checkbox" id="sendGcLink" checked>
+                <label for="sendGcLink">Email GoCardless Direct Debit Setup Link to Parent</label>
+            </div>
+
+            <button type="submit" class="submit-btn" id="submitBtn">Save Records & Send Setup Link</button>
+        </form>
+        <div id="statusMessage"></div>
+    </div>
+
+    <script>
+        const supabaseUrl = 'https://rjlldqbqkmbgluoafapz.supabase.co';
+        const supabaseKey = 'sb_publishable_7sI-qeqiY0PWtgxVNKarsw_GXv_uT-4'; 
+        const supabaseClient = window.supabase.createClient(supabaseUrl, supabaseKey);
+
+        // EmailJS Credentials (shared with your lesson logger)
+        const EMAILJS_PUBLIC_KEY = 'LnTC1Ncj8AZSJr9ge'; 
+        const EMAILJS_SERVICE_ID = 'service_6h8d5nf';
+        const EMAILJS_TEMPLATE_ID = 'template_p8h1t8n'; // Or a separate template configured for billing
+        emailjs.init({ publicKey: EMAILJS_PUBLIC_KEY });
+
+        const GOOGLE_SCRIPT_URL = '<?!= appUrl ?>';
+
+        let locationsList = [];
+        let customersList = [];
+
+        async function fetchInitialData() {
+            const locRes = await supabaseClient.from('locations').select('*').order('location_name');
+            if (locRes.data) {
+                locationsList = locRes.data;
+                populateLocationDropdown(document.querySelector('.location-select'));
+            }
+
+            const custRes = await supabaseClient.from('customers').select('id, given_name, family_name, email').order('family_name');
+            if (custRes.data) {
+                customersList = custRes.data;
+                const custSelect = document.getElementById('existing_customer_select');
+                custSelect.innerHTML = '<option value="">-- Select Existing Parent --</option>';
+                customersList.forEach(c => {
+                    let opt = document.createElement('option');
+                    opt.value = c.id;
+                    opt.textContent = `${c.family_name}, ${c.given_name} (${c.email || 'No Email'})`;
+                    custSelect.appendChild(opt);
+                });
+            }
+        }
+
+        function populateLocationDropdown(selectElement) {
+            selectElement.innerHTML = '<option value="">-- Select Location --</option>';
+            locationsList.forEach(loc => {
+                let opt = document.createElement('option');
+                opt.value = loc.id;
+                opt.textContent = loc.location_name;
+                selectElement.appendChild(opt);
+            });
+        }
+
+        function toggleCustomerMode() {
+            const isNew = document.querySelector('input[name="customer_type"]:checked').value === 'new';
+            document.getElementById('newCustomerSection').style.display = isNew ? 'block' : 'none';
+            document.getElementById('existingCustomerSection').style.display = isNew ? 'none' : 'block';
+            
+            document.getElementById('given_name').required = isNew;
+            document.getElementById('family_name').required = isNew;
+            document.getElementById('email').required = isNew;
+            document.getElementById('existing_customer_select').required = !isNew;
+        }
+
+        function addStudentBlock() {
+            const container = document.getElementById('studentsContainer');
+            const block = document.createElement('div');
+            block.className = 'student-block';
+            
+            block.innerHTML = `
+                <button type="button" class="remove-btn" onclick="this.parentElement.remove()">Remove</button>
+                <div class="form-group">
+                    <label>Student Name *</label>
+                    <input type="text" class="pupil-name" required>
+                </div>
+                <div class="form-group">
+                    <label>Student Email (Leave blank to use Parent's Email)</label>
+                    <input type="email" class="pupil-email">
+                </div>
+                <div class="form-group">
+                    <label>Default Location</label>
+                    <select class="location-select"></select>
+                </div>
+            `;
+            
+            container.appendChild(block);
+            populateLocationDropdown(block.querySelector('.location-select'));
+        }
+
+        document.getElementById('onboardingForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const btn = document.getElementById('submitBtn');
+            const status = document.getElementById('statusMessage');
+            
+            btn.disabled = true;
+            btn.innerText = "Processing...";
+            status.innerHTML = "";
+
+            const isNewCustomer = document.querySelector('input[name="customer_type"]:checked').value === 'new';
+            let finalCustomerId = null;
+            let parentEmail = "";
+            let parentGivenName = "";
+
+            try {
+                if (isNewCustomer) {
+                    parentGivenName = document.getElementById('given_name').value.trim();
+                    parentEmail = document.getElementById('email').value.trim();
+                    const familyName = document.getElementById('family_name').value.trim();
+                    
+                    const newCustData = {
+                        given_name: parentGivenName,
+                        family_name: familyName,
+                        email: parentEmail,
+                        phone_number: document.getElementById('phone_number').value.trim(),
+                        starting_balance: parseFloat(document.getElementById('starting_balance').value || 0)
+                    };
+
+                    const { data: customerReturn, error: custErr } = await supabaseClient
+                        .from('customers')
+                        .insert([newCustData])
+                        .select('id')
+                        .single();
+
+                    if (custErr) throw custErr;
+                    finalCustomerId = customerReturn.id;
+                    customersList.push({ id: finalCustomerId, ...newCustData });
+
+                } else {
+                    finalCustomerId = document.getElementById('existing_customer_select').value;
+                    const existingCust = customersList.find(c => c.id === finalCustomerId);
+                    parentEmail = existingCust ? existingCust.email : "";
+                    parentGivenName = existingCust ? existingCust.given_name : "Customer";
+                }
+
+                // Insert Students
+                const studentBlocks = document.querySelectorAll('.student-block');
+                const pupilsToInsert = [];
+
+                studentBlocks.forEach(block => {
+                    const pupilName = block.querySelector('.pupil-name').value.trim();
+                    const pupilEmail = block.querySelector('.pupil-email').value.trim();
+                    const locationId = block.querySelector('.location-select').value;
+                    
+                    pupilsToInsert.push({
+                        pupil_name: pupilName,
+                        email: pupilEmail !== "" ? pupilEmail : parentEmail,
+                        default_location_id: locationId ? parseInt(locationId) : null,
+                        customer: finalCustomerId
+                    });
+                });
+
+                const { error: pupilErr } = await supabaseClient.from('pupils').insert(pupilsToInsert);
+                if (pupilErr) throw pupilErr;
+
+                // Optional: Trigger GoCardless Setup Link Email via Apps Script Webhook Backend
+                const shouldSendGc = document.getElementById('sendGcLink').checked;
+                if (shouldSendGc && parentEmail) {
+                    btn.innerText = "Sending GoCardless Link...";
+                    
+                    // Call a backend Apps Script function or webhook to generate GoCardless Redirect Flow URL
+                    // For security, secret tokens reside on the Python backend or Code.gs backend.
+                    // We can pass a request back to Code.gs to handle the GoCardless API call securely:
+                    
+                    await google.script.run
+                        .withSuccessHandler(() => {
+                            status.className = "success";
+                            status.innerText = "Saved successfully! GoCardless setup email sent to " + parentEmail;
+                        })
+                        .withFailureHandler((err) => {
+                            console.error(err);
+                            status.className = "error";
+                            status.innerText = "Saved to DB, but failed to send GC email: " + err.message;
+                        })
+                        .sendGoCardlessEmail(parentEmail, parentGivenName);
+                } else {
+                    status.className = "success";
+                    status.innerText = "Successfully saved records!";
+                }
+
+                // Reset form
+                document.getElementById('onboardingForm').reset();
+                toggleCustomerMode();
+                document.getElementById('studentsContainer').innerHTML = `
+                    <div class="student-block">
+                        <div class="form-group">
+                            <label>Student Name *</label>
+                            <input type="text" class="pupil-name" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Student Email (Leave blank to use Parent's Email)</label>
+                            <input type="email" class="pupil-email">
+                        </div>
+                        <div class="form-group">
+                            <label>Default Location</label>
+                            <select class="location-select"></select>
+                        </div>
+                    </div>
+                `;
+                populateLocationDropdown(document.querySelector('.location-select'));
+
+            } catch (error) {
+                console.error(error);
+                status.className = "error";
+                status.innerText = "Error saving records. Check console for details.";
+            } finally {
+                btn.disabled = false;
+                btn.innerText = "Save Records & Send Setup Link";
+            }
+        });
+
+        fetchInitialData();
+        toggleCustomerMode();
+    </script>
+</body>
+</html>
