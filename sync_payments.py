@@ -123,3 +123,56 @@ for p in payments:
 if records_to_insert:
     supabase.table("payments").upsert(records_to_insert).execute()
     print(f"Successfully synced {len(records_to_insert)} payments.")
+# ==========================================
+# STEP 4: PROCESS NIGHTLY PAYG LESSONS
+# ==========================================
+print("Starting PAYG sweep...")
+
+# 1. Fetch lessons flagged for PAYG that haven't been requested yet
+unprocessed_payg = supabase.table("lessons").select("id, pupil_id, lesson_fee").eq("payg", True).is_("payg_status", "null").execute().data
+
+if unprocessed_payg:
+    # 2. Build lookup dictionaries to find the correct Mandate for each Pupil
+    pupils = supabase.table("pupils").select("pupil_id, customer").execute().data
+    pupil_to_customer = {p['pupil_id']: p['customer'] for p in pupils}
+    
+    # Fetch active mandates from GoCardless directly (ensures we use the active GC ID, not the Supabase UUID)
+    active_mandates = supabase.table("mandates").select("id, customer").eq("status", "active").execute().data
+    customer_to_mandate = {m['customer']: m['id'] for m in active_mandates}
+
+    for lesson in unprocessed_payg:
+        customer_uuid = pupil_to_customer.get(lesson['pupil_id'])
+        gc_mandate_id = customer_to_mandate.get(customer_uuid)
+        fee = lesson.get('lesson_fee')
+
+        if gc_mandate_id and fee and float(fee) > 0:
+            try:
+                # 3. Create the payment via GoCardless API
+                payment = gc_client.payments.create(
+                    params={
+                        "amount": int(float(fee) * 100), # Convert to minor units (pence)
+                        "currency": "GBP",
+                        "links": {"mandate": gc_mandate_id},
+                        "description": "Lesson PAYG Charge"
+                    }
+                )
+                
+                # 4. Update the lesson row in Supabase with the success status
+                supabase.table("lessons").update({
+                    "payg_status": "Requested",
+                    "payg_id": payment.id
+                }).eq("id", lesson['id']).execute()
+                
+                print(f"Success: Charged £{fee} for Lesson {lesson['id']} (Payment ID: {payment.id})")
+                
+            except Exception as e:
+                # Log the error straight into the database so you can see it on the frontend
+                error_msg = str(e)[:250] # Truncate to fit column limits
+                supabase.table("lessons").update({
+                    "payg_status": f"Error: {error_msg}"
+                }).eq("id", lesson['id']).execute()
+                print(f"Failed to process PAYG for lesson {lesson['id']}: {e}")
+        else:
+            print(f"Skipped Lesson {lesson['id']}: Missing active mandate or zero fee.")
+else:
+    print("No new PAYG lessons to process.")
