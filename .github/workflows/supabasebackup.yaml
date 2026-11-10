@@ -1,7 +1,7 @@
 name: Manual Supabase Backup
 
 on:
-  workflow_dispatch: # This gives you a button to trigger it manually anytime
+  workflow_dispatch:
 
 jobs:
   backup:
@@ -11,7 +11,8 @@ jobs:
         env:
           DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: |
-          pg_dump "$DB_URL" --clean --if-exists --quote-all-identifiers -F p -f supabase_backup.sql
+          # Explicitly pass the connection URL to pg_dump
+          pg_dump --dbname="$DB_URL" --clean --if-exists --quote-all-identifiers -F p -f supabase_backup.sql
 
       - name: Upload Backup Artifact
         uses: actions/upload-artifact@v4
