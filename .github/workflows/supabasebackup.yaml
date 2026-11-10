@@ -1,0 +1,21 @@
+name: Manual Supabase Backup
+
+on:
+  workflow_dispatch: # This gives you a button to trigger it manually anytime
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dump Database
+        env:
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          pg_dump "$DB_URL" --clean --if-exists --quote-all-identifiers -F p -f supabase_backup.sql
+
+      - name: Upload Backup Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: supabase-manual-backup
+          path: supabase_backup.sql
+          retention-days: 30
