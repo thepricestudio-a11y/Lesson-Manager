@@ -23,14 +23,23 @@
         select, input, textarea { width: 100%; padding: 10px; margin-top: 5px; margin-bottom: 15px; box-sizing: border-box; border: 2px solid var(--border); border-radius: 8px; font-family: 'Nunito', sans-serif; background-color: var(--tuxedo-white); transition: border-color 0.3s ease; }
         input[type="file"] { background-color: transparent; border: none; padding: 0; margin-top: 10px; }
         select:focus, input:focus, textarea:focus { outline: none; border-color: var(--tuxedo-black); }
-        button { background: var(--tuxedo-black); color: var(--tuxedo-white); border: 2px solid var(--tuxedo-black); padding: 12px 20px; border-radius: 8px; cursor: pointer; width: 100%; font-size: 16px; font-weight: bold; font-family: 'Nunito', sans-serif; transition: all 0.3s ease; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
+        
+        /* Checkbox & Button Styles */
+        input[type="checkbox"] { width: auto; margin-right: 10px; margin-top: 0; margin-bottom: 0; transform: scale(1.2); cursor: pointer; }
+        .payg-container { display: flex; align-items: center; background: #fff3cd; border: 1px solid #ffeeba; padding: 12px; border-radius: 8px; margin-bottom: 15px; color: #856404; cursor: pointer; }
+        .payg-container label { margin-top: 0; cursor: pointer; display: flex; align-items: center; width: 100%; }
+        
+        button { background: var(--tuxedo-black); color: var(--tuxedo-white); border: 2px solid var(--tuxedo-black); padding: 12px 15px; border-radius: 8px; cursor: pointer; font-size: 15px; font-weight: bold; font-family: 'Nunito', sans-serif; transition: all 0.3s ease; box-shadow: 0 2px 5px rgba(0,0,0,0.2); width: 100%; }
         button:hover { background: var(--nature-green); border-color: var(--nature-green); transform: translateY(-1px); }
+        button:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+
         .history-item { border-left: 4px solid var(--tuxedo-black); background: #fafafa; padding: 12px; margin-bottom: 10px; border-radius: 0 8px 8px 0; font-size: 0.95em; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
         .history-item:last-child { margin-bottom: 0; }
         .date-badge { font-weight: 700; color: var(--wood); font-family: 'Merriweather', serif; font-size: 0.9em; }
         .comments-text { color: #556055; margin-top: 5px; display: block; }
+        .payg-badge { background: #ffeeba; color: #856404; font-size: 0.75em; padding: 2px 6px; border-radius: 4px; margin-left: 8px; vertical-align: middle; font-weight: bold; }
         
-        /* Billing Tile CSS (Imported from Billing Page) */
+        /* Billing Tile CSS */
         .customer-card { background: var(--card-bg); padding: 15px; border-radius: 8px; border: 1px solid var(--border); margin-bottom: 0; border-left: 6px solid var(--tuxedo-black); display: flex; justify-content: space-between; align-items: center; }
         .customer-info { flex-grow: 1; }
         .customer-name { font-size: 15px; font-weight: bold; margin-bottom: 2px; color: var(--tuxedo-black); }
@@ -38,7 +47,7 @@
         .customer-balance { font-size: 14px; font-family: 'Merriweather', serif; }
         .balance-positive { color: #d9534f; } 
         .balance-zero { color: var(--nature-green); }
-        .statement-btn { width: auto; background: var(--tuxedo-black); color: var(--tuxedo-white); border: 2px solid var(--tuxedo-black); padding: 8px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: bold; font-family: 'Nunito', sans-serif; transition: all 0.3s ease; white-space: nowrap; margin-left: 10px; box-shadow: none; }
+        .statement-btn { width: auto; flex: none; background: var(--tuxedo-black); color: var(--tuxedo-white); border: 2px solid var(--tuxedo-black); padding: 8px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: bold; box-shadow: none; margin-left: 10px; }
         .statement-btn:hover { background: var(--nature-green); border-color: var(--nature-green); transform: none; }
         #billingTileContainer { margin-top: 20px; padding-top: 20px; border-top: 1px solid #eaeaea; }
     </style>
@@ -51,8 +60,6 @@
     <div class="card" id="historyCard" style="display:none;">
         <h3>Recent Lessons</h3>
         <div id="historyBox"></div>
-        
-        <!-- NEW BILLING TILE INJECTION ZONE -->
         <div id="billingTileContainer"></div>
     </div>
 
@@ -64,179 +71,12 @@
         <label>Private Notes (Not Emailed):</label><textarea id="comments" rows="3" placeholder="Notes for your own records..."></textarea>
         <label>Feedback (Emailed to Customer):</label><textarea id="feedback" rows="4" placeholder="Great job today! Keep practicing..."></textarea>
         <label>Attach File (Sheet music, audio, etc.):</label><input type="file" id="fileInput">
+        
+        <div class="payg-container">
+            <label><input type="checkbox" id="isPaygCheckbox"> Flag as PAYG (Trigger Nightly Charge)</label>
+        </div>
+        
         <button id="saveBtn" onclick="saveLesson()">Save Lesson</button>
     </div>
 
     <script>
-        const EMAILJS_PUBLIC_KEY = 'LnTC1Ncj8AZSJr9ge'; 
-        const EMAILJS_SERVICE_ID = 'service_6h8d5nf';
-        const EMAILJS_TEMPLATE_ID = 'template_p8h1t8n';
-        emailjs.init({ publicKey: EMAILJS_PUBLIC_KEY });
-
-        const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxGCdZUEIaR3lYQTeHjJJYidHkuDIfP_RPcS2xmwtbuOSTcoyhFc1cIoqlOZl7xnAAwZA/exec';
-
-        let pupils = []; let locations = []; let attendanceRules = [];
-
-        async function initApp() {
-            try {
-                const [pupilsRes, locsRes, rulesRes] = await Promise.all([
-                    window.supabaseClient.from('pupils').select('*').order('pupil_name'),
-                    window.supabaseClient.from('locations').select('*').order('location_name'),
-                    window.supabaseClient.from('attendance_rules').select('*').order('id')
-                ]);
-
-                // NEW: Force database errors to pop up on the screen
-                if (pupilsRes.error) alert("Database Error (Pupils): " + pupilsRes.error.message);
-                if (locsRes.error) alert("Database Error (Locations): " + locsRes.error.message);
-
-                pupils = pupilsRes.data || []; 
-                locations = locsRes.data || []; 
-                attendanceRules = rulesRes.data || [];
-
-                const pupilSelect = document.getElementById('pupilSelect');
-                pupils.forEach(p => { 
-                    let opt = document.createElement('option'); 
-                    opt.value = p.pupil_id; 
-                    opt.textContent = p.pupil_name; 
-                    pupilSelect.appendChild(opt); 
-                });
-
-                const locSelect = document.getElementById('locationSelect');
-                locations.forEach(l => { 
-                    let opt = document.createElement('option'); 
-                    opt.value = l.id; 
-                    opt.textContent = l.location_name; 
-                    locSelect.appendChild(opt); 
-                });
-
-                const attSelect = document.getElementById('attendanceSelect');
-                attendanceRules.forEach(a => { 
-                    let opt = document.createElement('option'); 
-                    opt.value = a.id; 
-                    opt.textContent = a.description; 
-                    attSelect.appendChild(opt); 
-                    if(a.description.toLowerCase().includes('present')) { opt.selected = true; } 
-                });
-            } catch (error) { 
-                alert("Critical Initialization Error: " + error.message);
-                console.error("Error during initialization:", error); 
-            }
-        }
-        async function handlePupilChange() {
-            const pupilId = document.getElementById('pupilSelect').value;
-            const historyCard = document.getElementById('historyCard');
-            const formCard = document.getElementById('formCard');
-            const billingContainer = document.getElementById('billingTileContainer');
-            
-            if (!pupilId) { historyCard.style.display = 'none'; formCard.style.display = 'none'; return; }
-
-            const selectedPupil = pupils.find(p => p.pupil_id == pupilId);
-            if (selectedPupil && selectedPupil.default_location_id) { document.getElementById('locationSelect').value = selectedPupil.default_location_id; }
-
-            try {
-                // 1. Fetch and render lesson history
-                const { data: history, error } = await window.supabaseClient.from('lessons').select('*').eq('pupil_id', pupilId).order('created_at', { ascending: false }).limit(5);
-                const historyBox = document.getElementById('historyBox'); historyBox.innerHTML = '';
-                
-                if (history && history.length > 0) {
-                    history.forEach(lesson => {
-                        const date = new Date(lesson.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
-                        const attText = attendanceRules.find(a => a.id == lesson.attendance)?.description || 'N/A';
-                        let fileLinkHtml = lesson.file_upload ? `<br><a href="${lesson.file_upload}" target="_blank" style="color:var(--nature-green);font-size:0.85em;">📎 View Attachment</a>` : '';
-                        historyBox.innerHTML += `<div class="history-item"><span class="date-badge">${date}</span> — ${attText} (${lesson.duration}m)<br><em class="comments-text">Notes: "${lesson.comments || 'N/A'}"</em><em class="comments-text">Sent: "${lesson.feedback || 'N/A'}"</em>${fileLinkHtml}</div>`;
-                    });
-                } else { historyBox.innerHTML = '<div class="history-item">No previous lessons found.</div>'; }
-                
-                // 2. Fetch and render billing tile
-                billingContainer.innerHTML = '<div style="font-size: 0.9em; color: #666; font-style: italic;">Loading account balance...</div>';
-                
-                if (selectedPupil && selectedPupil.customer) {
-                    const { data: balanceData, error: balanceError } = await window.supabaseClient
-                        .from('customer_balances')
-                        .select('*')
-                        .eq('customer_id', selectedPupil.customer)
-                        .single();
-                        
-                    if (balanceData) {
-                        const starting = parseFloat(balanceData.starting_balance || 0);
-                        const incurred = parseFloat(balanceData.total_lesson_fees || 0);
-                        const paid = parseFloat(balanceData.total_payments || 0);
-                        const balance = parseFloat(balanceData.current_balance_owed || 0);
-                        const formattedBalance = `£${Math.abs(balance).toFixed(2)}`;
-                        
-                        let balanceClass = ''; let balanceLabel = '';
-                        if (balance > 0) { balanceClass = 'balance-positive'; balanceLabel = 'Amount Owed:'; } 
-                        else if (balance < 0) { balanceClass = 'balance-zero'; balanceLabel = 'In Credit:'; } 
-                        else { balanceClass = 'balance-zero'; balanceLabel = 'Balance:'; }
-                        
-                        const statementUrl = `statement.html?customerId=${balanceData.customer_id}`;
-
-                        billingContainer.innerHTML = `
-                            <h4>Associated Account</h4>
-                            <div class="customer-card">
-                                <div class="customer-info">
-                                    <div class="customer-name">${balanceData.customer_name}</div>
-                                    <div class="details-text">Start: £${starting.toFixed(2)} | Incurred: £${incurred.toFixed(2)} | Paid: £${paid.toFixed(2)}</div>
-                                    <div class="customer-balance ${balanceClass}">${balanceLabel} <strong>${formattedBalance}</strong></div>
-                                </div>
-                                <button onclick="window.open('${statementUrl}', '_blank')" class="statement-btn">Statement</button>
-                            </div>
-                        `;
-                    } else if (balanceError && balanceError.code !== 'PGRST116') {
-                        console.error("Billing fetch error:", balanceError);
-                        billingContainer.innerHTML = '<div style="font-size: 0.9em; color: #d9534f; font-style: italic;">Failed to load billing info.</div>';
-                    } else {
-                        billingContainer.innerHTML = '<div style="font-size: 0.9em; color: #666; font-style: italic;">No active billing records for this account.</div>';
-                    }
-                } else {
-                    billingContainer.innerHTML = '<div style="font-size: 0.9em; color: #666; font-style: italic;">No customer assigned to this pupil.</div>';
-                }
-
-                historyCard.style.display = 'block'; formCard.style.display = 'block'; document.getElementById('comments').value = ''; document.getElementById('feedback').value = '';
-            } catch (error) { console.error("Error loading data:", error); }
-        }
-
-        async function saveLesson() {
-            const btn = document.getElementById('saveBtn'); btn.textContent = 'Preparing...'; btn.disabled = true;
-            const pupilId = document.getElementById('pupilSelect').value;
-            const selectedPupil = pupils.find(p => p.pupil_id == pupilId);
-            const fileInput = document.getElementById('fileInput'); const file = fileInput.files[0]; let fileUrl = null;
-
-            try {
-                if (file) {
-                    btn.textContent = 'Uploading to Drive...';
-                    const base64Data = await new Promise((resolve, reject) => {
-                        const reader = new FileReader(); reader.onload = () => resolve(reader.result.split(',')[1]); reader.onerror = error => reject(error); reader.readAsDataURL(file);
-                    });
-                    const response = await fetch(GOOGLE_SCRIPT_URL, {
-                        method: 'POST',
-                        body: JSON.stringify({ filename: `${Date.now()}_${file.name}`, mimeType: file.type, base64: base64Data })
-                    });
-                    const result = await response.json();
-                    if (result.error) throw new Error(result.error);
-                    fileUrl = result.url; 
-                }
-
-                btn.textContent = 'Saving Database...';
-                const feedbackText = document.getElementById('feedback').value;
-                const newLesson = { pupil_id: pupilId, attendance: document.getElementById('attendanceSelect').value, location_id: document.getElementById('locationSelect').value, duration: document.getElementById('duration').value, comments: document.getElementById('comments').value, feedback: feedbackText, file_upload: fileUrl };
-
-                const { error: dbError } = await window.supabaseClient.from('lessons').insert([newLesson]);
-                if (dbError) throw dbError;
-
-                const hasFeedback = feedbackText.trim() !== "";
-                if ((hasFeedback || fileUrl) && selectedPupil.email) {
-                    btn.textContent = 'Sending Email...';
-                    await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, { to_email: selectedPupil.email, to_name: selectedPupil.pupil_name, feedback: hasFeedback ? feedbackText : "Please find the attached file for today's lesson.", file_link: fileUrl || "No file attached." });
-                    alert('🐾 Lesson saved and emailed to ' + selectedPupil.email + '! 🎵');
-                } else {
-                    alert('🐾 Lesson saved locally. (No feedback/file, so no email sent) 🎵');
-                }
-                fileInput.value = ''; handlePupilChange(); 
-            } catch (error) { alert('Error: ' + error.message); console.error(error); } 
-            finally { btn.textContent = 'Save Lesson'; btn.disabled = false; }
-        }
-        initApp();
-    </script>
-</body>
-</html>
