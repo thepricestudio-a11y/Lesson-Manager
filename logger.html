@@ -80,3 +80,184 @@
     </div>
 
     <script>
+        console.log("Logger script parsed...");
+        
+        const EMAILJS_PUBLIC_KEY = 'LnTC1Ncj8AZSJr9ge'; 
+        const EMAILJS_SERVICE_ID = 'service_6h8d5nf';
+        const EMAILJS_TEMPLATE_ID = 'template_p8h1t8n';
+        emailjs.init({ publicKey: EMAILJS_PUBLIC_KEY });
+
+        const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxGCdZUEIaR3lYQTeHjJJYidHkuDIfP_RPcS2xmwtbuOSTcoyhFc1cIoqlOZl7xnAAwZA/exec';
+
+        let pupils = []; let locations = []; let attendanceRules = [];
+
+        async function initApp() {
+            console.log("initApp triggered...");
+            try {
+                const [pupilsRes, locsRes, rulesRes] = await Promise.all([
+                    window.supabaseClient.from('pupils').select('*').order('pupil_name'),
+                    window.supabaseClient.from('locations').select('*').order('location_name'),
+                    window.supabaseClient.from('attendance_rules').select('*').order('id')
+                ]);
+
+                if (pupilsRes.error) console.error("Pupils DB Error:", pupilsRes.error);
+
+                pupils = pupilsRes.data || []; 
+                locations = locsRes.data || []; 
+                attendanceRules = rulesRes.data || [];
+                
+                console.log(`Loaded ${pupils.length} pupils.`);
+
+                const pupilSelect = document.getElementById('pupilSelect');
+                pupils.forEach(p => { let opt = document.createElement('option'); opt.value = p.pupil_id; opt.textContent = p.pupil_name; pupilSelect.appendChild(opt); });
+
+                const locSelect = document.getElementById('locationSelect');
+                locations.forEach(l => { let opt = document.createElement('option'); opt.value = l.id; opt.textContent = l.location_name; locSelect.appendChild(opt); });
+
+                const attSelect = document.getElementById('attendanceSelect');
+                attendanceRules.forEach(a => { let opt = document.createElement('option'); opt.value = a.id; opt.textContent = a.description; attSelect.appendChild(opt); if(a.description.toLowerCase().includes('present')) { opt.selected = true; } });
+            } catch (error) { 
+                console.error("Critical Error during initialization:", error); 
+                alert("App failed to initialize. Check console.");
+            }
+        }
+
+        async function handlePupilChange() {
+            const pupilId = document.getElementById('pupilSelect').value;
+            const historyCard = document.getElementById('historyCard');
+            const formCard = document.getElementById('formCard');
+            const billingContainer = document.getElementById('billingTileContainer');
+            
+            if (!pupilId) { historyCard.style.display = 'none'; formCard.style.display = 'none'; return; }
+
+            const selectedPupil = pupils.find(p => p.pupil_id == pupilId);
+            if (selectedPupil && selectedPupil.default_location_id) { document.getElementById('locationSelect').value = selectedPupil.default_location_id; }
+
+            try {
+                const { data: history, error } = await window.supabaseClient.from('lessons').select('*').eq('pupil_id', pupilId).order('created_at', { ascending: false }).limit(5);
+                const historyBox = document.getElementById('historyBox'); historyBox.innerHTML = '';
+                
+                if (history && history.length > 0) {
+                    history.forEach(lesson => {
+                        const date = new Date(lesson.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+                        const attText = attendanceRules.find(a => a.id == lesson.attendance)?.description || 'N/A';
+                        const paygTag = lesson.payg ? `<span class="payg-badge">PAYG</span>` : '';
+                        let fileLinkHtml = lesson.file_upload ? `<br><a href="${lesson.file_upload}" target="_blank" style="color:var(--nature-green);font-size:0.85em;">📎 View Attachment</a>` : '';
+                        
+                        historyBox.innerHTML += `<div class="history-item"><span class="date-badge">${date}</span> — ${attText} (${lesson.duration}m) ${paygTag}<br><em class="comments-text">Notes: "${lesson.comments || 'N/A'}"</em><em class="comments-text">Sent: "${lesson.feedback || 'N/A'}"</em>${fileLinkHtml}</div>`;
+                    });
+                } else { historyBox.innerHTML = '<div class="history-item">No previous lessons found.</div>'; }
+                
+                billingContainer.innerHTML = '<div style="font-size: 0.9em; color: #666; font-style: italic;">Loading account balance...</div>';
+                
+                if (selectedPupil && selectedPupil.customer) {
+                    const { data: balanceData, error: balanceError } = await window.supabaseClient.from('customer_balances').select('*').eq('customer_id', selectedPupil.customer).single();
+                        
+                    if (balanceData) {
+                        const starting = parseFloat(balanceData.starting_balance || 0);
+                        const incurred = parseFloat(balanceData.total_lesson_fees || 0);
+                        const paid = parseFloat(balanceData.total_payments || 0);
+                        const balance = parseFloat(balanceData.current_balance_owed || 0);
+                        const formattedBalance = `£${Math.abs(balance).toFixed(2)}`;
+                        
+                        let balanceClass = ''; let balanceLabel = '';
+                        if (balance > 0) { balanceClass = 'balance-positive'; balanceLabel = 'Amount Owed:'; } 
+                        else if (balance < 0) { balanceClass = 'balance-zero'; balanceLabel = 'In Credit:'; } 
+                        else { balanceClass = 'balance-zero'; balanceLabel = 'Balance:'; }
+                        
+                        const statementUrl = `statement.html?customerId=${balanceData.customer_id}`;
+
+                        billingContainer.innerHTML = `
+                            <h4>Associated Account</h4>
+                            <div class="customer-card">
+                                <div class="customer-info">
+                                    <div class="customer-name">${balanceData.customer_name}</div>
+                                    <div class="details-text">Start: £${starting.toFixed(2)} | Incurred: £${incurred.toFixed(2)} | Paid: £${paid.toFixed(2)}</div>
+                                    <div class="customer-balance ${balanceClass}">${balanceLabel} <strong>${formattedBalance}</strong></div>
+                                </div>
+                                <button onclick="window.open('${statementUrl}', '_blank')" class="statement-btn">Statement</button>
+                            </div>
+                        `;
+                    } else if (balanceError && balanceError.code !== 'PGRST116') {
+                        billingContainer.innerHTML = '<div style="font-size: 0.9em; color: #d9534f; font-style: italic;">Failed to load billing info.</div>';
+                    } else {
+                        billingContainer.innerHTML = '<div style="font-size: 0.9em; color: #666; font-style: italic;">No active billing records for this account.</div>';
+                    }
+                } else {
+                    billingContainer.innerHTML = '<div style="font-size: 0.9em; color: #666; font-style: italic;">No customer assigned to this pupil.</div>';
+                }
+
+                historyCard.style.display = 'block'; formCard.style.display = 'block'; document.getElementById('comments').value = ''; document.getElementById('feedback').value = '';
+                document.getElementById('isPaygCheckbox').checked = false;
+            } catch (error) { console.error("Error loading data:", error); }
+        }
+
+        async function saveLesson() {
+            const saveBtn = document.getElementById('saveBtn'); 
+            const isPayg = document.getElementById('isPaygCheckbox').checked;
+            
+            saveBtn.disabled = true;
+            saveBtn.textContent = 'Preparing...'; 
+            
+            const pupilId = document.getElementById('pupilSelect').value;
+            const selectedPupil = pupils.find(p => p.pupil_id == pupilId);
+            const fileInput = document.getElementById('fileInput'); const file = fileInput.files[0]; let fileUrl = null;
+
+            try {
+                if (file) {
+                    saveBtn.textContent = 'Uploading to Drive...';
+                    const base64Data = await new Promise((resolve, reject) => {
+                        const reader = new FileReader(); reader.onload = () => resolve(reader.result.split(',')[1]); reader.onerror = error => reject(error); reader.readAsDataURL(file);
+                    });
+                    const response = await fetch(GOOGLE_SCRIPT_URL, {
+                        method: 'POST',
+                        body: JSON.stringify({ filename: `${Date.now()}_${file.name}`, mimeType: file.type, base64: base64Data })
+                    });
+                    const result = await response.json();
+                    if (result.error) throw new Error(result.error);
+                    fileUrl = result.url; 
+                }
+
+                saveBtn.textContent = 'Saving Database...';
+                const feedbackText = document.getElementById('feedback').value;
+                const newLesson = { 
+                    pupil_id: pupilId, 
+                    attendance: document.getElementById('attendanceSelect').value, 
+                    location_id: document.getElementById('locationSelect').value, 
+                    duration: document.getElementById('duration').value, 
+                    comments: document.getElementById('comments').value, 
+                    feedback: feedbackText, 
+                    file_upload: fileUrl,
+                    payg: isPayg
+                };
+
+                const { error: dbError } = await window.supabaseClient.from('lessons').insert([newLesson]);
+                if (dbError) throw dbError;
+
+                const hasFeedback = feedbackText.trim() !== "";
+                const paygMessage = isPayg ? " (Flagged for PAYG billing)" : "";
+                
+                if ((hasFeedback || fileUrl) && selectedPupil.email) {
+                    saveBtn.textContent = 'Sending Email...';
+                    await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, { to_email: selectedPupil.email, to_name: selectedPupil.pupil_name, feedback: hasFeedback ? feedbackText : "Please find the attached file for today's lesson.", file_link: fileUrl || "No file attached." });
+                    alert('🐾 Lesson saved' + paygMessage + ' and emailed to ' + selectedPupil.email + '! 🎵');
+                } else {
+                    alert('🐾 Lesson saved locally' + paygMessage + '. 🎵');
+                }
+                
+                fileInput.value = ''; 
+                document.getElementById('isPaygCheckbox').checked = false; 
+                handlePupilChange(); 
+            } catch (error) { 
+                alert('Error: ' + error.message); console.error(error); 
+            } finally { 
+                saveBtn.textContent = 'Save Lesson'; 
+                saveBtn.disabled = false; 
+            }
+        }
+        
+        // This execution command must be present to load the dropdowns
+        initApp();
+    </script>
+</body>
+</html>
