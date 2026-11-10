@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Receipt Scanner & Categoriser</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="js/supabase-config.js"></script>
+    <script src="js/bouncer.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Merriweather:ital,wght@0,400;0,700;1,400&family=Nunito:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root { --tuxedo-black: #1a1a1a; --tuxedo-white: #ffffff; --nature-green: #4a7c59; --wood: #8b5a2b; --bg: #f0f2f0; --card-bg: #ffffff; --text: #2c362c; --border: #e0e0e0; }
+        body { font-family: 'Nunito', sans-serif; padding: 20px; max-width: 700px; margin: 0 auto; background: var(--bg); color: var(--text); }
+        .header-container { text-align: center; margin-bottom: 25px; }
+        .emojis { font-size: 2rem; letter-spacing: 10px; margin-bottom: 5px; }
+        h1, h2, h3 { font-family: 'Merriweather', serif; color: var(--tuxedo-black); margin-top: 0; }
+        .back-btn { background: none; border: none; color: var(--nature-green); font-weight: bold; font-size: 16px; cursor: pointer; padding: 0; margin-bottom: 20px; font-family: 'Nunito', sans-serif; }
+        .back-btn:hover { text-decoration: underline; }
+        .card { background: var(--card-bg); padding: 25px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08); margin-bottom: 20px; border-top: 6px solid var(--tuxedo-black); border-bottom: 3px solid var(--wood); }
+        label { font-weight: 700; color: var(--tuxedo-black); display: inline-block; margin-top: 10px; }
+        select, input, textarea { width: 100%; padding: 10px; margin-top: 5px; margin-bottom: 15px; box-sizing: border-box; border: 2px solid var(--border); border-radius: 8px; font-family: 'Nunito', sans-serif; background-color: var(--tuxedo-white); }
+        input[type="file"] { background-color: transparent; border: none; padding: 0; margin-top: 10px; }
+        button { background: var(--tuxedo-black); color: var(--tuxedo-white); border: 2px solid var(--tuxedo-black); padding: 12px 15px; border-radius: 8px; cursor: pointer; font-size: 15px; font-weight: bold; font-family: 'Nunito', sans-serif; transition: all 0.3s ease; width: 100%; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
+        button:hover { background: var(--nature-green); border-color: var(--nature-green); }
+        button:disabled { opacity: 0.6; cursor: not-allowed; }
+        .receipt-preview { max-height: 200px; display: block; margin: 0 auto 15px auto; border-radius: 6px; border: 1px solid var(--border); }
+    </style>
+</head>
+<body>
+    <button onclick="window.location.href='menu.html'" class="back-btn">← Back to Menu</button>
+    <div class="header-container"><div class="emojis">🧾 🤖 📂</div><h1>Receipt Scanner</h1></div>
+    
+    <div class="card">
+        <h3>Upload Receipt Image or PDF</h3>
+        <input type="file" id="receiptFile" accept="image/*,.pdf">
+        <button id="scanBtn" onclick="processReceipt()">Scan & Categorise with Gemini</button>
+    </div>
+
+    <div class="card" id="editCard" style="display:none;">
+        <h3>Review & Edit Details</h3>
+        <img id="previewImg" class="receipt-preview" style="display:none;">
+        
+        <label>Merchant Name:</label>
+        <input type="text" id="editMerchant">
+        
+        <label>Total Amount (£):</label>
+        <input type="number" id="editAmount" step="0.01">
+        
+        <label>Category:</label>
+        <select id="editCategory">
+            <option value="Studio Equipment">Studio Equipment</option>
+            <option value="Utilities">Utilities</option>
+            <option value="Travel">Travel</option>
+            <option value="Software & Subscriptions">Software & Subscriptions</option>
+            <option value="Marketing">Marketing</option>
+            <option value="Office Supplies">Office Supplies</option>
+            <option value="Other">Other</option>
+        </select>
+        
+        <label>Expense Date:</label>
+        <input type="date" id="editDate">
+        
+        <label>Notes / Summary:</label>
+        <textarea id="editNotes" rows="2"></textarea>
+        
+        <button id="saveBtn" onclick="saveToSupabase()">Save to Database</button>
+    </div>
+
+    <script>
+        const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwcMhnLzqFTJGlAc8lRUx2rbLCeOuQzbo5WJeT8asx7ARFZMDbZMUm1zjdBZY3S_E5Exg/exec';
+        let uploadedFileUrl = null;
+
+        async function processReceipt() {
+            const fileInput = document.getElementById('receiptFile');
+            const file = fileInput.files[0];
+            if (!file) { alert('Please select a file first.'); return; }
+
+            const scanBtn = document.getElementById('scanBtn');
+            scanBtn.disabled = true;
+            scanBtn.textContent = 'Uploading & Analyzing with Gemini...';
+
+            try {
+                const base64Data = await new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = () => resolve(reader.result.split(',')[1]);
+                    reader.onerror = error => reject(error);
+                    reader.readAsDataURL(file);
+                });
+
+                const response = await fetch(GOOGLE_SCRIPT_URL, {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        filename: `${Date.now()}_${file.name}`,
+                        mimeType: file.type,
+                        base64: base64Data
+                    })
+                });
+
+                const result = await response.json();
+                if (!result.success) throw new Error(result.error);
+
+                uploadedFileUrl = result.url;
+                const ext = result.extracted;
+
+                // Populate form fields for review/editing
+                document.getElementById('editMerchant').value = ext.merchant_name || '';
+                document.getElementById('editAmount').value = ext.total_amount || '';
+                document.getElementById('editCategory').value = ext.category || 'Other';
+                document.getElementById('editDate').value = ext.expense_date || new Date().toISOString().split('T')[0];
+                document.getElementById('editNotes').value = ext.notes || '';
+
+                if (file.type.startsWith('image/')) {
+                    const previewImg = document.getElementById('previewImg');
+                    previewImg.src = URL.createObjectURL(file);
+                    previewImg.style.display = 'block';
+                }
+
+                document.getElementById('editCard').style.display = 'block';
+                alert('✨ Receipt successfully categorised by Gemini! Review the details below and save.');
+
+            } catch (error) {
+                alert('Error processing receipt: ' + error.message);
+                console.error(error);
+            } finally {
+                scanBtn.disabled = false;
+                scanBtn.textContent = 'Scan & Categorise with Gemini';
+            }
+        }
+
+        async function saveToSupabase() {
+            const saveBtn = document.getElementById('saveBtn');
+            saveBtn.disabled = true;
+            saveBtn.textContent = 'Saving...';
+
+            const receiptData = {
+                merchant_name: document.getElementById('editMerchant').value.trim(),
+                total_amount: parseFloat(document.getElementById('editAmount').value) || null,
+                category: document.getElementById('editCategory').value,
+                expense_date: document.getElementById('editDate').value || null,
+                notes: document.getElementById('editNotes').value.trim(),
+                file_url: uploadedFileUrl
+            };
+
+            try {
+                const { error } = await window.supabaseClient.from('receipts').insert([receiptData]);
+                if (error) throw error;
+
+                alert('✅ Receipt saved successfully to Supabase!');
+                document.getElementById('editCard').style.display = 'none';
+                document.getElementById('receiptFile').value = '';
+            } catch (error) {
+                alert('Error saving to database: ' + error.message);
+                console.error(error);
+            } finally {
+                saveBtn.disabled = false;
+                saveBtn.textContent = 'Save to Database';
+            }
+        }
+    </script>
+</body>
+</html>
