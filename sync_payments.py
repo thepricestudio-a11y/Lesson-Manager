@@ -132,16 +132,27 @@ print("Starting PAYG sweep...")
 unprocessed_payg = supabase.table("lessons").select("id, pupil_id, lesson_fee").eq("payg", True).is_("payg_status", "null").execute().data
 
 if unprocessed_payg:
-    # 2. Build lookup dictionaries to find the correct Mandate for each Pupil
+    # 2. Build lookup dictionaries, explicitly filtering out empty (None) values
     pupils = supabase.table("pupils").select("pupil_id, customer").execute().data
-    pupil_to_customer = {p['pupil_id']: p['customer'] for p in pupils}
+    pupil_to_customer = {p['pupil_id']: p['customer'] for p in pupils if p.get('customer')}
     
-    # Fetch active mandates from GoCardless directly (ensures we use the active GC ID, not the Supabase UUID)
     active_mandates = supabase.table("mandates").select("id, customer").eq("status", "active").execute().data
-    customer_to_mandate = {m['customer']: m['id'] for m in active_mandates}
+    customer_to_mandate = {m['customer']: m['id'] for m in active_mandates if m.get('customer')}
 
     for lesson in unprocessed_payg:
         customer_uuid = pupil_to_customer.get(lesson['pupil_id'])
+        
+        # FAILSAFE: If the pupil has no customer assigned, stop immediately
+        if not customer_uuid:
+            print(f"Skipped Lesson {lesson['id']}: Pupil has no associated customer account.")
+            
+            # Optionally update the database to reflect why it was skipped
+            supabase.table("lessons").update({
+                "payg_status": "Error: No Customer Assigned"
+            }).eq("id", lesson['id']).execute()
+            
+            continue
+
         gc_mandate_id = customer_to_mandate.get(customer_uuid)
         fee = lesson.get('lesson_fee')
 
@@ -150,7 +161,7 @@ if unprocessed_payg:
                 # 3. Create the payment via GoCardless API
                 payment = gc_client.payments.create(
                     params={
-                        "amount": int(float(fee) * 100), # Convert to minor units (pence)
+                        "amount": int(float(fee) * 100), 
                         "currency": "GBP",
                         "links": {"mandate": gc_mandate_id},
                         "description": "Lesson PAYG Charge"
@@ -166,13 +177,16 @@ if unprocessed_payg:
                 print(f"Success: Charged £{fee} for Lesson {lesson['id']} (Payment ID: {payment.id})")
                 
             except Exception as e:
-                # Log the error straight into the database so you can see it on the frontend
-                error_msg = str(e)[:250] # Truncate to fit column limits
+                error_msg = str(e)[:250] 
                 supabase.table("lessons").update({
                     "payg_status": f"Error: {error_msg}"
                 }).eq("id", lesson['id']).execute()
                 print(f"Failed to process PAYG for lesson {lesson['id']}: {e}")
         else:
             print(f"Skipped Lesson {lesson['id']}: Missing active mandate or zero fee.")
+            
+            supabase.table("lessons").update({
+                "payg_status": "Error: Missing mandate or zero fee"
+            }).eq("id", lesson['id']).execute()
 else:
     print("No new PAYG lessons to process.")
