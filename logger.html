@@ -237,14 +237,13 @@
                 const savedLesson = insertedData[0];
                 const paygMessage = isPayg ? " (Flagged for PAYG billing)" : "";
                 
-                // --- NEW DUAL-EMAIL LOGIC START ---
+                // --- DUAL-EMAIL LOGIC START ---
                 let baseContent = feedbackText.trim();
                 if (!baseContent && fileUrl) {
                     baseContent = "Please find the attached file for today's lesson.";
                 }
                 const hasBaseContent = (baseContent !== "");
 
-                // Retrieve the Customer's email to separate billing notifications from lesson feedback
                 let customerEmail = null;
                 let customerName = null;
                 if (isPayg && selectedPupil.customer) {
@@ -257,13 +256,9 @@
 
                 const pupilEmail = selectedPupil.email;
                 const emailsToSend = [];
-                
-                // Check if the pupil and customer share the exact same email address (e.g. an adult student)
                 const sameEmail = customerEmail && pupilEmail && customerEmail.toLowerCase() === pupilEmail.toLowerCase();
 
-                // 1. Queue the Pupil's Email (Feedback/Files only)
                 if (hasBaseContent && pupilEmail) {
-                    // Only send a standalone pupil email if they aren't also the customer receiving the PAYG notice
                     if (!sameEmail || !isPayg) {
                         emailsToSend.push({
                             to_email: pupilEmail,
@@ -274,13 +269,11 @@
                     }
                 }
 
-                // 2. Queue the Customer's Email (Account Note + optional Feedback/Files)
                 if (isPayg) {
                     const formattedFee = savedLesson.lesson_fee ? `£${parseFloat(savedLesson.lesson_fee).toFixed(2)}` : 'the standard rate';
                     const paygExplanation = `Account Note: As I now expect that ${selectedPupil.pupil_name} will receive more lessons than your payment plan covers, a one-off payment for this lesson of ${formattedFee} will be automatically requested via your GoCardless Direct Debit shortly. You will receive a standard confirmation email from GoCardless once the payment is initiated.`;
 
                     if (customerEmail) {
-                        // If there is feedback/file, attach it above the Account Note. If not, just send the Account Note.
                         let finalCustomerContent = hasBaseContent ? baseContent + "\n\n" + paygExplanation : paygExplanation;
                         emailsToSend.push({
                             to_email: customerEmail,
@@ -289,7 +282,6 @@
                             file_link: fileUrl || "No file attached."
                         });
                     } else if (pupilEmail && !sameEmail) {
-                        // Failsafe: If no customer email is registered, append the billing note to the pupil's email
                         let finalContent = hasBaseContent ? baseContent + "\n\n" + paygExplanation : paygExplanation;
                         const existingIdx = emailsToSend.findIndex(e => e.to_email === pupilEmail);
                         if (existingIdx > -1) {
@@ -305,7 +297,6 @@
                     }
                 }
 
-                // 3. Dispatch the queued emails sequentially
                 if (emailsToSend.length > 0) {
                     saveBtn.textContent = 'Sending Emails...';
                     for (const emailData of emailsToSend) {
@@ -315,11 +306,15 @@
                 } else {
                     alert('🐾 Lesson saved locally' + paygMessage + '. 🎵');
                 }
-                // --- NEW DUAL-EMAIL LOGIC END ---
+                // --- DUAL-EMAIL LOGIC END ---
                 
+                // --- CLEAR BACK TO SELECTOR ---
                 fileInput.value = ''; 
                 document.getElementById('isPaygCheckbox').checked = false; 
-                handlePupilChange(); 
+                document.getElementById('pupilSelect').value = ""; // Reset dropdown
+                document.getElementById('historyCard').style.display = 'none'; // Hide history card
+                document.getElementById('formCard').style.display = 'none'; // Hide form card
+                
             } catch (error) { 
                 alert('Error: ' + error.message); console.error(error); 
             } finally { 
