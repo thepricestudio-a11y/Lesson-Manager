@@ -237,13 +237,33 @@
                 const hasFeedback = feedbackText.trim() !== "";
                 const paygMessage = isPayg ? " (Flagged for PAYG billing)" : "";
                 
-                if ((hasFeedback || fileUrl) && selectedPupil.email) {
+                // --- NEW EMAIL LOGIC START ---
+                let emailContent = feedbackText.trim();
+                
+                if (isPayg) {
+                    const paygExplanation = `Account Note: As I now expect that ${selectedPupil.pupil_name} will receive more lessons than your payment plan covers, a one-off Pay-As-You-Go payment for this lesson will be automatically requested via your GoCardless Direct Debit shortly. You will receive a standard confirmation email from GoCardless once the payment is initiated.`;
+                    
+                    // Append the explanation if there was normal feedback, or just use the explanation if feedback was blank
+                    emailContent = emailContent ? emailContent + "\n\n" + paygExplanation : paygExplanation;
+                } else if (!emailContent && fileUrl) {
+                    // Fallback for file attachments without feedback, but NOT a PAYG transaction
+                    emailContent = "Please find the attached file for today's lesson.";
+                }
+
+                // If there is ANY reason to send an email (feedback, file, or PAYG), and they have an email address:
+                if ((hasFeedback || fileUrl || isPayg) && selectedPupil.email) {
                     saveBtn.textContent = 'Sending Email...';
-                    await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, { to_email: selectedPupil.email, to_name: selectedPupil.pupil_name, feedback: hasFeedback ? feedbackText : "Please find the attached file for today's lesson.", file_link: fileUrl || "No file attached." });
+                    await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, { 
+                        to_email: selectedPupil.email, 
+                        to_name: selectedPupil.pupil_name, 
+                        feedback: emailContent, 
+                        file_link: fileUrl || "No file attached." 
+                    });
                     alert('🐾 Lesson saved' + paygMessage + ' and emailed to ' + selectedPupil.email + '! 🎵');
                 } else {
                     alert('🐾 Lesson saved locally' + paygMessage + '. 🎵');
                 }
+                // --- NEW EMAIL LOGIC END ---
                 
                 fileInput.value = ''; 
                 document.getElementById('isPaygCheckbox').checked = false; 
@@ -256,7 +276,6 @@
             }
         }
         
-        // This execution command must be present to load the dropdowns
         initApp();
     </script>
 </body>
