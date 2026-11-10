@@ -33,8 +33,14 @@
     
     <div class="card">
         <h3>Upload Receipt Image or PDF</h3>
+        
+        <label>Processing Model:</label>
+        <select id="modelSelect">
+            <option value="">Loading models...</option>
+        </select>
+
         <input type="file" id="receiptFile" accept="image/*,.pdf">
-        <button id="scanBtn" onclick="processReceipt()">Scan & Categorise with Gemini</button>
+        <button id="scanBtn" onclick="processReceipt()">Scan & Categorise</button>
     </div>
 
     <div class="card" id="editCard" style="display:none;">
@@ -68,17 +74,54 @@
     </div>
 
     <script>
-        const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbx8oDhjnqop5nieWgwPE_95OyLbhLWZMxu9yTgk0U7vcK-jWVSGQsP-mnl3KgTbFAlprQ/exec';
+        const GOOGLE_SCRIPT_URL = 'YOUR_GOOGLE_SCRIPT_WEB_APP_URL';
         let uploadedFileUrl = null;
+
+        // Fetch live models when the page loads
+        document.addEventListener('DOMContentLoaded', async () => {
+            const modelSelect = document.getElementById('modelSelect');
+            try {
+                const response = await fetch(GOOGLE_SCRIPT_URL);
+                const result = await response.json();
+                
+                if (result.success && result.models.length > 0) {
+                    modelSelect.innerHTML = ''; // Clear loading text
+                    
+                    // Sort models alphabetically so newer versions rise to the top
+                    result.models.sort((a, b) => b.localeCompare(a));
+                    
+                    result.models.forEach(model => {
+                        const opt = document.createElement('option');
+                        opt.value = model; // e.g., "models/gemini-1.5-flash"
+                        opt.textContent = model.replace('models/', ''); // cleaner display
+                        
+                        // Default to the stable 1.5-flash if available
+                        if (model === 'models/gemini-1.5-flash') {
+                            opt.selected = true;
+                        }
+                        
+                        modelSelect.appendChild(opt);
+                    });
+                } else {
+                    modelSelect.innerHTML = '<option value="models/gemini-1.5-flash">Failed to load live list (Using default 1.5-flash)</option>';
+                }
+            } catch (err) {
+                console.error("Model fetch error:", err);
+                modelSelect.innerHTML = '<option value="models/gemini-1.5-flash">models/gemini-1.5-flash (Default fallback)</option>';
+            }
+        });
 
         async function processReceipt() {
             const fileInput = document.getElementById('receiptFile');
             const file = fileInput.files[0];
+            const selectedModel = document.getElementById('modelSelect').value;
+
             if (!file) { alert('Please select a file first.'); return; }
+            if (!selectedModel) { alert('Please wait for models to load or refresh.'); return; }
 
             const scanBtn = document.getElementById('scanBtn');
             scanBtn.disabled = true;
-            scanBtn.textContent = 'Uploading & Analyzing with Gemini...';
+            scanBtn.textContent = 'Uploading & Analyzing...';
 
             try {
                 const base64Data = await new Promise((resolve, reject) => {
@@ -93,7 +136,8 @@
                     body: JSON.stringify({
                         filename: `${Date.now()}_${file.name}`,
                         mimeType: file.type,
-                        base64: base64Data
+                        base64: base64Data,
+                        model: selectedModel // Sending chosen model back to backend
                     })
                 });
 
@@ -103,7 +147,6 @@
                 uploadedFileUrl = result.url;
                 const ext = result.extracted;
 
-                // Populate form fields for review/editing
                 document.getElementById('editMerchant').value = ext.merchant_name || '';
                 document.getElementById('editAmount').value = ext.total_amount || '';
                 document.getElementById('editCategory').value = ext.category || 'Other';
@@ -117,14 +160,14 @@
                 }
 
                 document.getElementById('editCard').style.display = 'block';
-                alert('✨ Receipt successfully categorised by Gemini! Review the details below and save.');
+                alert(`✨ Receipt successfully categorised using ${selectedModel.replace('models/','')}!`);
 
             } catch (error) {
                 alert('Error processing receipt: ' + error.message);
                 console.error(error);
             } finally {
                 scanBtn.disabled = false;
-                scanBtn.textContent = 'Scan & Categorise with Gemini';
+                scanBtn.textContent = 'Scan & Categorise';
             }
         }
 
