@@ -65,14 +65,30 @@
 
     <div class="card" id="formCard" style="display:none;">
         <h3>Today's Lesson</h3>
-        <label>Attendance:</label><select id="attendanceSelect"></select>
-        <label>Location:</label><select id="locationSelect"></select>
-        <label>Duration (mins):</label><input type="number" id="duration" value="30">
-        <label>Private Notes (Not Emailed):</label><textarea id="comments" rows="3" placeholder="Notes for your own records..."></textarea>
-        <label>Feedback (Emailed to Customer):</label><textarea id="feedback" rows="4" placeholder="Great job today! Keep practicing..."></textarea>
-        <label>Attach File (Sheet music, audio, etc.):</label><input type="file" id="fileInput">
         
-        <div class="payg-container">
+        <!-- ATTENDANCE FIRST -->
+        <label>Attendance:</label>
+        <select id="attendanceSelect" onchange="handleAttendanceChange()"></select>
+        
+        <!-- FIELDS FOR 'PRESENT' -->
+        <div id="presentFields">
+            <label>Location:</label><select id="locationSelect"></select>
+            <label>Duration (mins):</label><input type="number" id="duration" value="30">
+            <label>Private Notes (Not Emailed):</label><textarea id="comments" rows="3" placeholder="Notes for your own records..."></textarea>
+            <label>Feedback (Emailed to Customer):</label><textarea id="feedback" rows="4" placeholder="Great job today! Keep practicing..."></textarea>
+            <label>Attach File (Sheet music, audio, etc.):</label><input type="file" id="fileInput">
+        </div>
+
+        <!-- FIELDS FOR CANCELLATIONS / NO-SHOWS -->
+        <div id="cancelledFields" style="display: none;">
+            <label>Cancellation Date:</label>
+            <input type="date" id="cancellationDate">
+            <label>Cancellation Details / Reason:</label>
+            <textarea id="cancellationDetails" rows="3" placeholder="Reason for cancellation..."></textarea>
+        </div>
+        
+        <!-- PAYG (CONDITIONAL BASED ON BILL FLAG) -->
+        <div class="payg-container" id="paygContainer">
             <label><input type="checkbox" id="isPaygCheckbox"> Flag as PAYG (Trigger Nightly Charge)</label>
         </div>
         
@@ -106,8 +122,6 @@
                 locations = locsRes.data || []; 
                 attendanceRules = rulesRes.data || [];
                 
-                console.log(`Loaded ${pupils.length} pupils.`);
-
                 const pupilSelect = document.getElementById('pupilSelect');
                 pupils.forEach(p => { let opt = document.createElement('option'); opt.value = p.pupil_id; opt.textContent = p.pupil_name; pupilSelect.appendChild(opt); });
 
@@ -115,10 +129,52 @@
                 locations.forEach(l => { let opt = document.createElement('option'); opt.value = l.id; opt.textContent = l.location_name; locSelect.appendChild(opt); });
 
                 const attSelect = document.getElementById('attendanceSelect');
-                attendanceRules.forEach(a => { let opt = document.createElement('option'); opt.value = a.id; opt.textContent = a.description; attSelect.appendChild(opt); if(a.description.toLowerCase().includes('present')) { opt.selected = true; } });
+                attendanceRules.forEach(a => { 
+                    let opt = document.createElement('option'); 
+                    opt.value = a.id; 
+                    opt.textContent = a.description; 
+                    attSelect.appendChild(opt); 
+                    if(a.description.toLowerCase().includes('present')) { opt.selected = true; } 
+                });
+                
+                // Set initial field visibility
+                handleAttendanceChange();
+                
             } catch (error) { 
                 console.error("Critical Error during initialization:", error); 
                 alert("App failed to initialize. Check console.");
+            }
+        }
+
+        // --- NEW LOGIC: CONDITIONAL FIELDS BASED ON ATTENDANCE ---
+        function handleAttendanceChange() {
+            const attId = document.getElementById('attendanceSelect').value;
+            const rule = attendanceRules.find(a => a.id == attId);
+            
+            const presentFields = document.getElementById('presentFields');
+            const cancelledFields = document.getElementById('cancelledFields');
+            const paygContainer = document.getElementById('paygContainer');
+            const isPaygCheckbox = document.getElementById('isPaygCheckbox');
+
+            if (rule) {
+                // Toggle Fields based on "Present"
+                if (rule.description.toLowerCase().includes('present')) {
+                    presentFields.style.display = 'block';
+                    cancelledFields.style.display = 'none';
+                } else {
+                    presentFields.style.display = 'none';
+                    cancelledFields.style.display = 'block';
+                    // Auto-fill today's date for cancellations
+                    document.getElementById('cancellationDate').value = new Date().toISOString().split('T')[0];
+                }
+
+                // Toggle PAYG based on the rule's 'bill' boolean
+                if (rule.bill === true) {
+                    paygContainer.style.display = 'flex';
+                } else {
+                    paygContainer.style.display = 'none';
+                    isPaygCheckbox.checked = false; // Ensure it isn't accidentally submitted
+                }
             }
         }
 
@@ -142,9 +198,17 @@
                         const date = new Date(lesson.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
                         const attText = attendanceRules.find(a => a.id == lesson.attendance)?.description || 'N/A';
                         const paygTag = lesson.payg ? `<span class="payg-badge">PAYG</span>` : '';
+                        
+                        let notesHtml = '';
+                        if (lesson.cancellation_details) {
+                            notesHtml = `<em class="comments-text">Cancelled: "${lesson.cancellation_details}"</em>`;
+                        } else {
+                            notesHtml = `<em class="comments-text">Notes: "${lesson.comments || 'N/A'}"</em><em class="comments-text">Sent: "${lesson.feedback || 'N/A'}"</em>`;
+                        }
+                        
                         let fileLinkHtml = lesson.file_upload ? `<br><a href="${lesson.file_upload}" target="_blank" style="color:var(--nature-green);font-size:0.85em;">📎 View Attachment</a>` : '';
                         
-                        historyBox.innerHTML += `<div class="history-item"><span class="date-badge">${date}</span> — ${attText} (${lesson.duration}m) ${paygTag}<br><em class="comments-text">Notes: "${lesson.comments || 'N/A'}"</em><em class="comments-text">Sent: "${lesson.feedback || 'N/A'}"</em>${fileLinkHtml}</div>`;
+                        historyBox.innerHTML += `<div class="history-item"><span class="date-badge">${date}</span> — ${attText} ${lesson.duration ? '('+lesson.duration+'m)' : ''} ${paygTag}<br>${notesHtml}${fileLinkHtml}</div>`;
                     });
                 } else { historyBox.innerHTML = '<div class="history-item">No previous lessons found.</div>'; }
                 
@@ -187,14 +251,22 @@
                     billingContainer.innerHTML = '<div style="font-size: 0.9em; color: #666; font-style: italic;">No customer assigned to this pupil.</div>';
                 }
 
-                historyCard.style.display = 'block'; formCard.style.display = 'block'; document.getElementById('comments').value = ''; document.getElementById('feedback').value = '';
-                document.getElementById('isPaygCheckbox').checked = false;
+                historyCard.style.display = 'block'; formCard.style.display = 'block'; 
+                
+                // Reset inputs
+                document.getElementById('comments').value = ''; 
+                document.getElementById('feedback').value = '';
+                document.getElementById('cancellationDetails').value = '';
+                
             } catch (error) { console.error("Error loading data:", error); }
         }
 
         async function saveLesson() {
             const saveBtn = document.getElementById('saveBtn'); 
             const isPayg = document.getElementById('isPaygCheckbox').checked;
+            const attId = document.getElementById('attendanceSelect').value;
+            const selectedRule = attendanceRules.find(a => a.id == attId);
+            const isPresent = selectedRule.description.toLowerCase().includes('present');
             
             saveBtn.disabled = true;
             saveBtn.textContent = 'Preparing...'; 
@@ -204,7 +276,7 @@
             const fileInput = document.getElementById('fileInput'); const file = fileInput.files[0]; let fileUrl = null;
 
             try {
-                if (file) {
+                if (file && isPresent) {
                     saveBtn.textContent = 'Uploading to Drive...';
                     const base64Data = await new Promise((resolve, reject) => {
                         const reader = new FileReader(); reader.onload = () => resolve(reader.result.split(',')[1]); reader.onerror = error => reject(error); reader.readAsDataURL(file);
@@ -219,17 +291,24 @@
                 }
 
                 saveBtn.textContent = 'Saving Database...';
-                const feedbackText = document.getElementById('feedback').value;
-                const newLesson = { 
+                
+                // Construct the payload dynamically based on attendance
+                let newLesson = { 
                     pupil_id: pupilId, 
-                    attendance: document.getElementById('attendanceSelect').value, 
-                    location_id: document.getElementById('locationSelect').value, 
-                    duration: document.getElementById('duration').value, 
-                    comments: document.getElementById('comments').value, 
-                    feedback: feedbackText, 
-                    file_upload: fileUrl,
+                    attendance: attId,
                     payg: isPayg
                 };
+
+                if (isPresent) {
+                    newLesson.location_id = document.getElementById('locationSelect').value;
+                    newLesson.duration = document.getElementById('duration').value;
+                    newLesson.comments = document.getElementById('comments').value;
+                    newLesson.feedback = document.getElementById('feedback').value;
+                    newLesson.file_upload = fileUrl;
+                } else {
+                    newLesson.cancellation_date = document.getElementById('cancellationDate').value;
+                    newLesson.cancellation_details = document.getElementById('cancellationDetails').value;
+                }
 
                 const { data: insertedData, error: dbError } = await window.supabaseClient.from('lessons').insert([newLesson]).select();
                 if (dbError) throw dbError;
@@ -238,7 +317,10 @@
                 const paygMessage = isPayg ? " (Flagged for PAYG billing)" : "";
                 
                 // --- DUAL-EMAIL LOGIC START ---
-                let baseContent = feedbackText.trim();
+                // Only send standard feedback emails if Present. 
+                // If it's a billable "Missed" lesson flagged for PAYG, we send the cancellation details as the note.
+                let baseContent = isPresent ? newLesson.feedback.trim() : (newLesson.cancellation_details ? newLesson.cancellation_details.trim() : "");
+                
                 if (!baseContent && fileUrl) {
                     baseContent = "Please find the attached file for today's lesson.";
                 }
@@ -258,7 +340,8 @@
                 const emailsToSend = [];
                 const sameEmail = customerEmail && pupilEmail && customerEmail.toLowerCase() === pupilEmail.toLowerCase();
 
-                if (hasBaseContent && pupilEmail) {
+                // Standard Pupil Feedback (Only if Present)
+                if (hasBaseContent && pupilEmail && isPresent) {
                     if (!sameEmail || !isPayg) {
                         emailsToSend.push({
                             to_email: pupilEmail,
@@ -269,9 +352,11 @@
                     }
                 }
 
+                // PAYG Trigger Warnings (Sent regardless of attendance if checked)
                 if (isPayg) {
                     const formattedFee = savedLesson.lesson_fee ? `£${parseFloat(savedLesson.lesson_fee).toFixed(2)}` : 'the standard rate';
-                    const paygExplanation = `Account Note: As I now expect that ${selectedPupil.pupil_name} will receive more lessons than your payment plan covers, a one-off payment for this lesson of ${formattedFee} will be automatically requested via your GoCardless Direct Debit shortly. You will receive a standard confirmation email from GoCardless once the payment is initiated.`;
+                    const contextVerb = isPresent ? "receive" : "be billed for";
+                    const paygExplanation = `Account Note: As I now expect that ${selectedPupil.pupil_name} will ${contextVerb} more lessons than your payment plan covers, a one-off payment for this lesson of ${formattedFee} will be automatically requested via your GoCardless Direct Debit shortly. You will receive a standard confirmation email from GoCardless once the payment is initiated.`;
 
                     if (customerEmail) {
                         let finalCustomerContent = hasBaseContent ? baseContent + "\n\n" + paygExplanation : paygExplanation;
@@ -302,9 +387,9 @@
                     for (const emailData of emailsToSend) {
                         await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, emailData);
                     }
-                    alert('🐾 Lesson saved' + paygMessage + ' and emails sent! 🎵');
+                    alert('🐾 Log saved' + paygMessage + ' and emails sent! 🎵');
                 } else {
-                    alert('🐾 Lesson saved locally' + paygMessage + '. 🎵');
+                    alert('🐾 Log saved locally' + paygMessage + '. 🎵');
                 }
                 // --- DUAL-EMAIL LOGIC END ---
                 
