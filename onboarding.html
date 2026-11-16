@@ -179,7 +179,7 @@
                     const given_name = document.getElementById('given_name').value.trim();
                     const family_name = document.getElementById('family_name').value.trim();
                     const email = document.getElementById('email').value.trim();
-                    const phone = document.getElementById('phone_number').value.trim();
+                    const phone_number = document.getElementById('phone_number').value.trim();
                     const balance = parseFloat(document.getElementById('starting_balance').value) || 0.00;
 
                     if (!given_name || !family_name || !email) throw new Error("Please fill out all required Parent fields.");
@@ -188,7 +188,7 @@
                         given_name: given_name,
                         family_name: family_name,
                         email: email,
-                        phone: phone,
+                        phone_number: phone_number,
                         starting_balance: balance
                     }]).select().single();
 
