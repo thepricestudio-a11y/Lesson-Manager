@@ -49,10 +49,16 @@
                 <label><input type="radio" name="customer_type" value="new" checked onchange="toggleCustomerMode()"> New Customer (Parent)</label>
                 <label><input type="radio" name="customer_type" value="existing" onchange="toggleCustomerMode()"> Existing Customer (Add Sibling)</label>
             </div>
+            
             <div id="existingCustomerSection" style="display: none;">
                 <div class="section-title">Select Parent</div>
-                <div class="form-group"><select id="existing_customer_select"><option value="">-- Loading Customers... --</option></select></div>
+                <div class="form-group">
+                    <select id="existing_customer_select">
+                        <option value="">-- Loading Customers... --</option>
+                    </select>
+                </div>
             </div>
+            
             <div id="newCustomerSection">
                 <div class="section-title">Parent / Biller Details</div>
                 <div class="form-group"><label>First Name *</label><input type="text" id="given_name"></div>
@@ -61,14 +67,21 @@
                 <div class="form-group"><label>Phone Number</label><input type="tel" id="phone_number"></div>
                 <div class="form-group"><label>Starting Balance (£) *</label><input type="number" id="starting_balance" step="0.01" value="0.00"></div>
             </div>
+            
             <div class="section-title">Student Details</div>
             <div id="studentsContainer">
                 <div class="student-block">
                     <div class="form-group"><label>Student Name *</label><input type="text" class="pupil-name" required></div>
                     <div class="form-group"><label>Student Email (Leave blank to use Parent's Email)</label><input type="email" class="pupil-email"></div>
-                    <div class="form-group"><label>Default Location</label><select class="location-select"><option value="">-- Loading Locations... --</option></select></div>
+                    <div class="form-group">
+                        <label>Default Location</label>
+                        <select class="location-select">
+                            <option value="">-- Loading Locations... --</option>
+                        </select>
+                    </div>
                 </div>
             </div>
+            
             <button type="button" class="add-sibling-btn" onclick="addStudentBlock()">+ Add Another Student</button>
             <button type="submit" class="submit-btn" id="submitBtn">Save Records</button>
         </form>
@@ -80,3 +93,160 @@
         let customersList = [];
 
         async function fetchInitialData() {
+            try {
+                // Fetch Locations
+                const { data: locs, error: locError } = await window.supabaseClient.from('locations').select('*').order('location_name');
+                if (locError) throw locError;
+                locationsList = locs || [];
+
+                // Fetch Customers for the existing dropdown
+                const { data: custs, error: custError } = await window.supabaseClient.from('customers').select('*').order('family_name');
+                if (custError) throw custError;
+                customersList = custs || [];
+
+                // Populate initial Location dropdown
+                populateLocationsDropdown(document.querySelector('.location-select'));
+
+                // Populate Existing Customers dropdown
+                const custSelect = document.getElementById('existing_customer_select');
+                custSelect.innerHTML = '<option value="">-- Choose a Parent --</option>';
+                customersList.forEach(c => {
+                    const opt = document.createElement('option');
+                    opt.value = c.id; 
+                    opt.textContent = `${c.given_name} ${c.family_name} (${c.email})`;
+                    custSelect.appendChild(opt);
+                });
+
+            } catch (err) {
+                console.error("Error fetching initial data:", err);
+                document.getElementById('statusMessage').innerHTML = `<span class="error">Failed to connect to database.</span>`;
+            }
+        }
+
+        function populateLocationsDropdown(selectElement) {
+            selectElement.innerHTML = '<option value="">-- Choose a Location --</option>';
+            locationsList.forEach(l => {
+                const opt = document.createElement('option');
+                opt.value = l.id;
+                opt.textContent = l.location_name;
+                selectElement.appendChild(opt);
+            });
+        }
+
+        function toggleCustomerMode() {
+            const isExisting = document.querySelector('input[name="customer_type"]:checked').value === 'existing';
+            document.getElementById('existingCustomerSection').style.display = isExisting ? 'block' : 'none';
+            document.getElementById('newCustomerSection').style.display = isExisting ? 'none' : 'block';
+        }
+
+        function addStudentBlock() {
+            const container = document.getElementById('studentsContainer');
+            const block = document.createElement('div');
+            block.className = 'student-block';
+            block.innerHTML = `
+                <button type="button" class="remove-btn" onclick="this.parentElement.remove()">X Remove</button>
+                <div class="form-group"><label>Student Name *</label><input type="text" class="pupil-name" required></div>
+                <div class="form-group"><label>Student Email (Leave blank to use Parent's Email)</label><input type="email" class="pupil-email"></div>
+                <div class="form-group"><label>Default Location</label><select class="location-select"></select></div>
+            `;
+            container.appendChild(block);
+            
+            // Populate the dropdown in this newly created block
+            populateLocationsDropdown(block.querySelector('.location-select'));
+        }
+
+        document.getElementById('onboardingForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const btn = document.getElementById('submitBtn');
+            const statusMsg = document.getElementById('statusMessage');
+            btn.disabled = true;
+            btn.textContent = 'Saving...';
+            statusMsg.innerHTML = '';
+
+            try {
+                const isExisting = document.querySelector('input[name="customer_type"]:checked').value === 'existing';
+                let customerId;
+                let parentEmail;
+
+                // 1. Handle Parent / Customer Logic
+                if (isExisting) {
+                    customerId = document.getElementById('existing_customer_select').value;
+                    if (!customerId) throw new Error("Please select an existing parent from the list.");
+                    
+                    const selectedCust = customersList.find(c => c.id == customerId);
+                    parentEmail = selectedCust ? selectedCust.email : '';
+                } else {
+                    const given_name = document.getElementById('given_name').value.trim();
+                    const family_name = document.getElementById('family_name').value.trim();
+                    const email = document.getElementById('email').value.trim();
+                    const phone = document.getElementById('phone_number').value.trim();
+                    const balance = parseFloat(document.getElementById('starting_balance').value) || 0.00;
+
+                    if (!given_name || !family_name || !email) throw new Error("Please fill out all required Parent fields.");
+
+                    const { data: newCust, error: custErr } = await window.supabaseClient.from('customers').insert([{
+                        given_name: given_name,
+                        family_name: family_name,
+                        email: email,
+                        phone: phone,
+                        starting_balance: balance
+                    }]).select().single();
+
+                    if (custErr) throw custErr;
+                    customerId = newCust.id;
+                    parentEmail = newCust.email;
+                }
+
+                // 2. Handle Students / Pupils Logic
+                const studentBlocks = document.querySelectorAll('.student-block');
+                const pupilsToInsert = [];
+
+                studentBlocks.forEach(block => {
+                    const name = block.querySelector('.pupil-name').value.trim();
+                    const pEmail = block.querySelector('.pupil-email').value.trim() || parentEmail;
+                    const locId = block.querySelector('.location-select').value;
+
+                    if (name) {
+                        pupilsToInsert.push({
+                            pupil_name: name,
+                            email: pEmail,
+                            customer: customerId,
+                            default_location_id: locId ? parseInt(locId) : null
+                        });
+                    }
+                });
+
+                if (pupilsToInsert.length === 0) throw new Error("At least one student is required.");
+
+                const { error: pupilErr } = await window.supabaseClient.from('pupils').insert(pupilsToInsert);
+                if (pupilErr) throw pupilErr;
+
+                // 3. Cleanup & Reset
+                statusMsg.innerHTML = `<span class="success">✅ Successfully added to the database!</span>`;
+                this.reset();
+                document.getElementById('studentsContainer').innerHTML = `
+                    <div class="student-block">
+                        <div class="form-group"><label>Student Name *</label><input type="text" class="pupil-name" required></div>
+                        <div class="form-group"><label>Student Email (Leave blank to use Parent's Email)</label><input type="email" class="pupil-email"></div>
+                        <div class="form-group"><label>Default Location</label><select class="location-select"></select></div>
+                    </div>
+                `;
+                
+                // Re-fetch data so the new customer appears in the "Existing Customer" dropdown next time
+                await fetchInitialData(); 
+                toggleCustomerMode(); 
+
+            } catch (err) {
+                console.error("Save error:", err);
+                statusMsg.innerHTML = `<span class="error">❌ Error: ${err.message}</span>`;
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Save Records';
+            }
+        });
+
+        // Initialize script on page load
+        document.addEventListener('DOMContentLoaded', fetchInitialData);
+    </script>
+</body>
+</html>
