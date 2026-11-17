@@ -65,8 +65,12 @@
 
     <div class="card" id="formCard" style="display:none;">
         <h3>Today's Lesson</h3>
+
+        <!-- LESSON DATE/TIME FIRST -->
+        <label>Lesson Date & Time:</label>
+        <input type="datetime-local" id="lessonDateTime" required>
         
-        <!-- ATTENDANCE FIRST -->
+        <!-- ATTENDANCE -->
         <label>Attendance:</label>
         <select id="attendanceSelect" onchange="handleAttendanceChange()"></select>
         
@@ -195,7 +199,10 @@
                 
                 if (history && history.length > 0) {
                     history.forEach(lesson => {
-                        const date = new Date(lesson.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+                        const dateObj = new Date(lesson.created_at);
+                        const date = dateObj.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+                        const time = dateObj.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+                        
                         const attText = attendanceRules.find(a => a.id == lesson.attendance)?.description || 'N/A';
                         const paygTag = lesson.payg ? `<span class="payg-badge">PAYG</span>` : '';
                         
@@ -208,7 +215,7 @@
                         
                         let fileLinkHtml = lesson.file_upload ? `<br><a href="${lesson.file_upload}" target="_blank" style="color:var(--nature-green);font-size:0.85em;">📎 View Attachment</a>` : '';
                         
-                        historyBox.innerHTML += `<div class="history-item"><span class="date-badge">${date}</span> — ${attText} ${lesson.duration ? '('+lesson.duration+'m)' : ''} ${paygTag}<br>${notesHtml}${fileLinkHtml}</div>`;
+                        historyBox.innerHTML += `<div class="history-item"><span class="date-badge">${date} at ${time}</span> — ${attText} ${lesson.duration ? '('+lesson.duration+'m)' : ''} ${paygTag}<br>${notesHtml}${fileLinkHtml}</div>`;
                     });
                 } else { historyBox.innerHTML = '<div class="history-item">No previous lessons found.</div>'; }
                 
@@ -253,7 +260,17 @@
 
                 historyCard.style.display = 'block'; formCard.style.display = 'block'; 
                 
-                // Reset inputs
+                // --- Set Default Lesson Date/Time to Previous Quarter Hour ---
+                const now = new Date();
+                const minutes = now.getMinutes();
+                now.setMinutes(Math.floor(minutes / 15) * 15, 0, 0); // Round down to nearest 15 mins, zero out seconds
+                
+                // Create a format compatible with datetime-local (YYYY-MM-DDTHH:mm) adjusting for local timezone
+                const offset = now.getTimezoneOffset();
+                const localDate = new Date(now.getTime() - (offset * 60000));
+                document.getElementById('lessonDateTime').value = localDate.toISOString().slice(0, 16);
+                
+                // Reset other inputs
                 document.getElementById('comments').value = ''; 
                 document.getElementById('feedback').value = '';
                 document.getElementById('cancellationDetails').value = '';
@@ -292,11 +309,16 @@
 
                 saveBtn.textContent = 'Saving Database...';
                 
+                // Convert the local datetime-picker value back to UTC for Supabase
+                const localDateTimeVal = document.getElementById('lessonDateTime').value;
+                const utcLessonTime = new Date(localDateTimeVal).toISOString();
+
                 // Construct the payload dynamically based on attendance
                 let newLesson = { 
                     pupil_id: pupilId, 
                     attendance: attId,
-                    payg: isPayg
+                    payg: isPayg,
+                    created_at: utcLessonTime
                 };
 
                 if (isPresent) {
