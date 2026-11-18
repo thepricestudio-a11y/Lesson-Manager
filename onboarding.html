@@ -79,6 +79,7 @@
                             <option value="">-- Loading Locations... --</option>
                         </select>
                     </div>
+                    <div class="form-group"><label>Default Duration (mins)</label><input type="number" class="default-duration" value="30"></div>
                 </div>
             </div>
             
@@ -148,6 +149,7 @@
                 <div class="form-group"><label>Student Name *</label><input type="text" class="pupil-name" required></div>
                 <div class="form-group"><label>Student Email (Leave blank to use Parent's Email)</label><input type="email" class="pupil-email"></div>
                 <div class="form-group"><label>Default Location</label><select class="location-select"></select></div>
+                <div class="form-group"><label>Default Duration (mins)</label><input type="number" class="default-duration" value="30"></div>
             `;
             container.appendChild(block);
             
@@ -205,13 +207,15 @@
                     const name = block.querySelector('.pupil-name').value.trim();
                     const pEmail = block.querySelector('.pupil-email').value.trim() || parentEmail;
                     const locId = block.querySelector('.location-select').value;
+                    const duration = block.querySelector('.default-duration').value;
 
                     if (name) {
                         pupilsToInsert.push({
                             pupil_name: name,
                             email: pEmail,
                             customer: customerId,
-                            default_location_id: locId ? parseInt(locId) : null
+                            default_location_id: locId ? parseInt(locId) : null,
+                            default_duration: duration ? parseInt(duration) : 30
                         });
                     }
                 });
@@ -229,6 +233,7 @@
                         <div class="form-group"><label>Student Name *</label><input type="text" class="pupil-name" required></div>
                         <div class="form-group"><label>Student Email (Leave blank to use Parent's Email)</label><input type="email" class="pupil-email"></div>
                         <div class="form-group"><label>Default Location</label><select class="location-select"></select></div>
+                        <div class="form-group"><label>Default Duration (mins)</label><input type="number" class="default-duration" value="30"></div>
                     </div>
                 `;
                 
