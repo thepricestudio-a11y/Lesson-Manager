@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Edit Details</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="js/supabase-config.js"></script>
+    <script src="js/bouncer.js"></script>
+    
+    <link href="https://fonts.googleapis.com/css2?family=Merriweather:ital,wght@0,400;0,700;1,400&family=Nunito:wght@400;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        :root { --tuxedo-black: #1a1a1a; --tuxedo-white: #ffffff; --nature-green: #4a7c59; --wood: #8b5a2b; --bg: #f0f2f0; --text: #2c362c; --border: #ccc; }
+        body { font-family: 'Nunito', sans-serif; padding: 20px; max-width: 600px; margin: 0 auto; background: var(--bg); color: var(--text); }
+        .header-container { text-align: center; margin-bottom: 25px; }
+        .emojis { font-size: 2rem; letter-spacing: 10px; margin-bottom: 5px; }
+        h1 { font-family: 'Merriweather', serif; color: var(--tuxedo-black); margin-top: 0; }
+        .back-btn { background: none; border: none; color: var(--nature-green); font-weight: bold; font-size: 16px; cursor: pointer; padding: 0; margin-bottom: 20px; font-family: 'Nunito', sans-serif; }
+        .back-btn:hover { text-decoration: underline; }
+        .form-card { background: var(--tuxedo-white); padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08); border-top: 6px solid var(--tuxedo-black); margin-bottom: 20px; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; font-weight: bold; margin-bottom: 5px; color: var(--tuxedo-black); }
+        input[type="text"], input[type="email"], input[type="tel"], input[type="number"], select { width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 6px; font-family: 'Nunito', sans-serif; font-size: 16px; box-sizing: border-box; background-color: white; }
+        input:focus, select:focus { outline: none; border-color: var(--nature-green); box-shadow: 0 0 5px rgba(74, 124, 89, 0.3); }
+        .section-title { font-family: 'Merriweather', serif; font-size: 18px; margin-top: 0; margin-bottom: 15px; padding-bottom: 5px; border-bottom: 2px solid var(--nature-green); }
+        .student-block { background: #fafafa; border: 1px solid var(--border); padding: 20px; border-radius: 8px; margin-bottom: 15px; }
+        .submit-btn { background: var(--tuxedo-black); color: var(--tuxedo-white); border: none; padding: 15px; width: 100%; border-radius: 8px; cursor: pointer; font-size: 16px; font-weight: bold; font-family: 'Nunito', sans-serif; transition: 0.3s; }
+        .submit-btn:hover { background: var(--nature-green); }
+        .submit-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+        #statusMessage { margin-top: 15px; text-align: center; font-weight: bold; }
+        .success { color: var(--nature-green); }
+        .error { color: #d9534f; }
+        
+        /* Layout for Pupil Rows */
+        .pupil-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+        .pupil-grid-full { grid-column: 1 / -1; }
+    </style>
+</head>
+<body>
+    <button onclick="window.location.href='menu.html'" class="back-btn">← Back to Menu</button>
+    <div class="header-container"><div class="emojis">✏️ 📋</div><h1>Edit Details</h1></div>
+    
+    <!-- Selection Card -->
+    <div class="form-card" id="selectionCard">
+        <div class="section-title">Select Customer</div>
+        <div class="form-group">
+            <select id="customerSelect" onchange="loadCustomerDetails()">
+                <option value="">-- Loading Customers... --</option>
+            </select>
+        </div>
+    </div>
+
+    <!-- Edit Form (Hidden by default) -->
+    <form id="editForm" style="display: none;">
+        
+        <!-- Customer Details Card -->
+        <div class="form-card">
+            <div class="section-title">Parent / Biller Details</div>
+            <input type="hidden" id="customerId">
+            <div class="form-group"><label>First Name</label><input type="text" id="given_name" required></div>
+            <div class="form-group"><label>Last Name</label><input type="text" id="family_name" required></div>
+            <div class="form-group"><label>Email Address</label><input type="email" id="email" required></div>
+            <div class="form-group"><label>Phone Number</label><input type="tel" id="phone_number"></div>
+            <div class="form-group"><label>GoCardless ID</label><input type="text" id="gocardless_id" placeholder="Starts with CU..."></div>
+        </div>
+
+        <!-- Students Container -->
+        <div id="studentsContainer"></div>
+        
+        <div class="form-card" style="background: transparent; border: none; box-shadow: none; padding: 0;">
+            <button type="submit" class="submit-btn" id="submitBtn">Save Changes</button>
+            <div id="statusMessage"></div>
+        </div>
+    </form>
+
+    <script>
+        let locationsList = [];
+        let customersData = []; // Store full customer objects
+        let currentPupils = [];
+
+        async function initPage() {
+            try {
+                // Fetch Locations for dropdowns
+                const { data: locs, error: locError } = await window.supabaseClient.from('locations').select('*').order('location_name');
+                if (locError) throw locError;
+                locationsList = locs || [];
+
+                // Fetch Customers
+                const { data: custs, error: custError } = await window.supabaseClient.from('customers').select('*').order('family_name');
+                if (custError) throw custError;
+                customersData = custs || [];
+
+                // Populate Selection Dropdown
+                const custSelect = document.getElementById('customerSelect');
+                custSelect.innerHTML = '<option value="">-- Choose a Customer --</option>';
+                customersData.forEach(c => {
+                    const opt = document.createElement('option');
+                    opt.value = c.id; 
+                    opt.textContent = `${c.family_name}, ${c.given_name} (${c.email})`;
+                    custSelect.appendChild(opt);
+                });
+
+            } catch (err) {
+                console.error("Init error:", err);
+                document.getElementById('customerSelect').innerHTML = `<option value="">Error loading data.</option>`;
+            }
+        }
+
+        async function loadCustomerDetails() {
+            const customerId = document.getElementById('customerSelect').value;
+            const form = document.getElementById('editForm');
+            const statusMsg = document.getElementById('statusMessage');
+            statusMsg.innerHTML = '';
+            
+            if (!customerId) {
+                form.style.display = 'none';
+                return;
+            }
+
+            // Find selected customer from pre-loaded data
+            const customer = customersData.find(c => c.id === customerId);
+            
+            // Populate Customer Card
+            document.getElementById('customerId').value = customer.id;
+            document.getElementById('given_name').value = customer.given_name || '';
+            document.getElementById('family_name').value = customer.family_name || '';
+            document.getElementById('email').value = customer.email || '';
+            document.getElementById('phone_number').value = customer.phone_number || '';
+            document.getElementById('gocardless_id').value = customer.gocardless_id || '';
+
+            // Fetch Associated Pupils
+            try {
+                const { data: pupils, error } = await window.supabaseClient.from('pupils').select('*').eq('customer', customerId).order('pupil_name');
+                if (error) throw error;
+                currentPupils = pupils || [];
+                renderPupils(currentPupils);
+                form.style.display = 'block';
+            } catch (err) {
+                console.error("Error fetching pupils:", err);
+                statusMsg.innerHTML = `<span class="error">Failed to load associated students.</span>`;
+            }
+        }
+
+        function renderPupils(pupils) {
+            const container = document.getElementById('studentsContainer');
+            container.innerHTML = ''; // clear
+
+            pupils.forEach(pupil => {
+                // Generate Locations Dropdown HTML
+                let locOptionsHtml = '<option value="">-- None --</option>';
+                locationsList.forEach(l => {
+                    const selected = (l.id === pupil.default_location_id) ? 'selected' : '';
+                    locOptionsHtml += `<option value="${l.id}" ${selected}>${l.location_name}</option>`;
+                });
+
+                const block = document.createElement('div');
+                block.className = 'form-card';
+                block.innerHTML = `
+                    <div class="section-title">Student: ${pupil.pupil_name}</div>
+                    <div class="pupil-block" data-pupil-id="${pupil.pupil_id}">
+                        <div class="form-group"><label>Student Name</label><input type="text" class="p-name" value="${pupil.pupil_name || ''}" required></div>
+                        <div class="form-group"><label>Email Address</label><input type="email" class="p-email" value="${pupil.email || ''}"></div>
+                        <div class="pupil-grid">
+                            <div class="form-group"><label>Default Location</label><select class="p-loc">${locOptionsHtml}</select></div>
+                            <div class="form-group"><label>Default Duration (mins)</label><input type="number" class="p-dur" value="${pupil.default_duration || 30}"></div>
+                        </div>
+                    </div>
+                `;
+                container.appendChild(block);
+            });
+            
+            if(pupils.length === 0) {
+                container.innerHTML = `<div class="form-card"><div class="section-title">Students</div><p>No students associated with this account.</p></div>`;
+            }
+        }
+
+        document.getElementById('editForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const btn = document.getElementById('submitBtn');
+            const statusMsg = document.getElementById('statusMessage');
+            btn.disabled = true;
+            btn.textContent = 'Saving Changes...';
+            statusMsg.innerHTML = '';
+
+            const customerId = document.getElementById('customerId').value;
+
+            try {
+                // 1. Update Customer Record
+                const custUpdate = {
+                    given_name: document.getElementById('given_name').value.trim(),
+                    family_name: document.getElementById('family_name').value.trim(),
+                    email: document.getElementById('email').value.trim(),
+                    phone_number: document.getElementById('phone_number').value.trim(),
+                    gocardless_id: document.getElementById('gocardless_id').value.trim() || null
+                };
+
+                const { error: custErr } = await window.supabaseClient.from('customers').update(custUpdate).eq('id', customerId);
+                if (custErr) throw custErr;
+
+                // 2. Update Pupil Records
+                const pupilBlocks = document.querySelectorAll('.pupil-block');
+                
+                // We run these updates concurrently using Promise.all
+                const pupilPromises = Array.from(pupilBlocks).map(block => {
+                    const pId = block.getAttribute('data-pupil-id');
+                    const locVal = block.querySelector('.p-loc').value;
+                    const durVal = block.querySelector('.p-dur').value;
+                    
+                    const pUpdate = {
+                        pupil_name: block.querySelector('.p-name').value.trim(),
+                        email: block.querySelector('.p-email').value.trim(),
+                        default_location_id: locVal ? parseInt(locVal) : null,
+                        default_duration: durVal ? parseInt(durVal) : null
+                    };
+                    
+                    return window.supabaseClient.from('pupils').update(pUpdate).eq('pupil_id', pId);
+                });
+
+                const pupilResults = await Promise.all(pupilPromises);
+                
+                // Check if any pupil update failed
+                for(let res of pupilResults) {
+                    if (res.error) throw res.error;
+                }
+
+                // 3. Success state
+                statusMsg.innerHTML = `<span class="success">✅ Details successfully updated!</span>`;
+                
+                // Refresh local customer cache so dropdown name updates if they changed it
+                const custIndex = customersData.findIndex(c => c.id === customerId);
+                if(custIndex !== -1) {
+                    customersData[custIndex] = { ...customersData[custIndex], ...custUpdate };
+                    const opt = document.getElementById('customerSelect').querySelector(`option[value="${customerId}"]`);
+                    if(opt) {
+                         opt.textContent = `${custUpdate.family_name}, ${custUpdate.given_name} (${custUpdate.email})`;
+                    }
+                }
+
+            } catch (err) {
+                console.error("Save error:", err);
+                statusMsg.innerHTML = `<span class="error">❌ Error: ${err.message}</span>`;
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Save Changes';
+                // remove success message after 4 seconds
+                setTimeout(() => { if(statusMsg.innerHTML.includes('✅')) statusMsg.innerHTML = ''; }, 4000);
+            }
+        });
+
+        // Initialize script on page load
+        document.addEventListener('DOMContentLoaded', initPage);
+    </script>
+</body>
+</html>
