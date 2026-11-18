@@ -187,11 +187,23 @@
             const historyCard = document.getElementById('historyCard');
             const formCard = document.getElementById('formCard');
             const billingContainer = document.getElementById('billingTileContainer');
+            const durationInput = document.getElementById('duration');
             
             if (!pupilId) { historyCard.style.display = 'none'; formCard.style.display = 'none'; return; }
 
             const selectedPupil = pupils.find(p => p.pupil_id == pupilId);
-            if (selectedPupil && selectedPupil.default_location_id) { document.getElementById('locationSelect').value = selectedPupil.default_location_id; }
+            
+            // Set Default Location
+            if (selectedPupil && selectedPupil.default_location_id) { 
+                document.getElementById('locationSelect').value = selectedPupil.default_location_id; 
+            }
+            
+            // Set Default Duration
+            if (selectedPupil && selectedPupil.default_duration) {
+                durationInput.value = selectedPupil.default_duration;
+            } else {
+                durationInput.value = 30; // Fallback to 30 mins if no default is found
+            }
 
             try {
                 const { data: history, error } = await window.supabaseClient.from('lessons').select('*').eq('pupil_id', pupilId).order('created_at', { ascending: false }).limit(5);
